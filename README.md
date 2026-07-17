@@ -23,3 +23,8 @@ release workflow runs glyph's verdict + draft path only.
 glyph（gitmoji 駆動の commit-lint / semver / release-notes エンジン）の
 端から端までを実際に動かして見るための使い捨てデモ repo。PR-time lint →
 squash-safe な rolling draft release → 人間の Publish、の一巡を回す。
+
+## How the collection grows
+
+One PR per season. The `:sparkles:` commits drive minor bumps; typo fixes
+(`:pencil2:`) drive patches; docs like this line drive nothing.
