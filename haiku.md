@@ -13,3 +13,9 @@ A tiny collection that grows one PR at a time.
     in the cicada's cry
     no sign can foretell
     how soon it must die
+
+## autumn
+
+    on a withered branch
+    a crow has settled down—
+    autumn evening
