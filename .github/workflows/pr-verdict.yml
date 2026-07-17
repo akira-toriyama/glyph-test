@@ -1,0 +1,25 @@
+# glyph-test demo caller — thin caller of glyph's reusable merge preview.
+# One sticky PR comment predicts the bump and where the rolling draft lands
+# if the PR merges, computed from the PR's individual (pre-squash) commits.
+# Pinned to a CONCRETE glyph release tag: the workflow and the binary it
+# installs ship lockstep from that one tag (never a moving ref).
+name: pr-verdict
+
+on:
+  pull_request:
+    # synchronize is the point — the commits ARE the input, so every push
+    # recomputes the verdict (title edits are irrelevant, unlike a
+    # title-driven preview).
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-verdict-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  verdict:
+    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v0.4.0
