@@ -16,3 +16,8 @@
 4. Add water, boil, skim, simmer 8 min, THEN add the potatoes and simmer 7 more — they dissolve if they ride the whole boil.
 5. Kill the heat, dissolve the roux, simmer 10 more min.
 6. Serve over rice.
+
+## Roux from scratch (optional)
+
+Butter 30g + flour 30g, toast on low until nutty, then curry powder 1 tbsp.
+Whisk into the pot instead of the boxed roux.
