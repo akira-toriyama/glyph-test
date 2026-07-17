@@ -1,0 +1,14 @@
+# glyph-test demo caller — thin caller of glyph's reusable PR-commit lint.
+# Pinned to a CONCRETE glyph release tag: the workflow and the binary it
+# installs ship lockstep from that one tag (never a moving ref).
+name: commit-lint
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.3.0

@@ -1,0 +1,100 @@
+name: Release
+
+# glyph-test demo release — the verdict + rolling-DRAFT half of glyph's
+# reusable release.yml@v0.3.0, without the Swift app build (this repo ships
+# no binary). A push to main makes `glyph release` walk main's squash
+# commits since the last v* tag, resolve each to its merged PR over the API,
+# classify the PR's individual (pre-squash) commits — squash-safe — and
+# upsert ONE glyph-managed rolling DRAFT release. No git tag is created
+# until a human publishes the draft. The install block mirrors the reusable
+# verbatim (pinned tag, checksum + provenance fail-closed) so the demo
+# exercises the real supply-chain path too.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only (no draft write)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # glyph walks the tags and the range out of LOCAL git, so the full
+          # history must be here.
+          fetch-depth: 0
+          # Every release write goes through glyph/gh + the GH_TOKEN env,
+          # never git push — don't leave the checkout token in .git/config
+          # (zizmor artipacked).
+          persist-credentials: false
+
+      - name: Install glyph (pinned release binary, checksum + provenance verified)
+        env:
+          VER: v0.3.0
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ver="$VER"
+          base="https://github.com/akira-toriyama/glyph/releases/download/$ver"
+          file="glyph_${ver#v}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "/tmp/$file" "$base/$file"
+          curl -fsSL --retry 3 -o /tmp/glyph-checksums.txt "$base/checksums.txt"
+          ( cd /tmp && grep -F "  $file" glyph-checksums.txt | sha256sum -c - )
+          # Provenance gate: the sha256 above only proves the tarball matches
+          # THIS release's own checksums.txt. `gh attestation verify` also
+          # proves the artifact was built by glyph's release workflow.
+          # Fail-closed, bounded retry (the Sigstore log can blip).
+          for i in 1 2 3; do
+            if gh attestation verify "/tmp/$file" \
+                 --repo akira-toriyama/glyph \
+                 --signer-workflow akira-toriyama/glyph/.github/workflows/goreleaser.yml; then
+              break
+            fi
+            if [ "$i" -eq 3 ]; then
+              echo "attestation verification failed after 3 attempts" >&2
+              exit 1
+            fi
+            echo "attestation verify failed (attempt $i); retrying" >&2
+            sleep "$((i * 3))"
+          done
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "/tmp/$file" -C "$HOME/.local/bin" glyph
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/glyph" version
+
+      # ONE walk composes the whole verdict (tag + body) and, unless this is
+      # a dry run, upserts the rolling draft in the same call. Exit 1 is the
+      # uniform soft no-release: fold it into a success no-op here.
+      - name: Compose the verdict and upsert the rolling DRAFT
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "## Install" "" "Nothing to install — glyph-test is a demo; the release IS the artifact." > "$RUNNER_TEMP/install-notes.md"
+          args=(release --json --footer-file "$RUNNER_TEMP/install-notes.md")
+          if [ "$DRY_RUN" = "true" ]; then
+            args=(release --dry-run --json --footer-file "$RUNNER_TEMP/install-notes.md")
+          fi
+          status=0
+          glyph "${args[@]}" > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/verdict.err" || status=$?
+          cat "$RUNNER_TEMP/verdict.err" >&2
+          cat "$RUNNER_TEMP/verdict.json" || true
+          if [ "$status" -eq 1 ]; then
+            echo "::notice::no release-worthy changes since the last tag — nothing to do."
+            exit 0
+          fi
+          exit "$status"
