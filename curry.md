@@ -3,7 +3,7 @@
 ## Ingredients (4 servings)
 
 - onions × 2, carrot × 1, potatoes × 2
-- pork or beef, 300g
+- thin-sliced pork belly (or beef), 300 g
 - curry roux, half a box
 - water, 850ml
 - oil, 1 tbsp
