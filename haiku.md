@@ -6,7 +6,7 @@ A tiny collection that grows one PR at a time.
 
     an old silent pond
     a frog jumps into the pond—
-    splash! silence again
+    water's sound
 
 ## summer
 
