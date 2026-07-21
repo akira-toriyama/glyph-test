@@ -30,3 +30,13 @@ func TestTitleCapitalisesTheName(t *testing.T) {
 		t.Fatalf("Title(\"ada\") = %q, want %q", got, "hi Ada")
 	}
 }
+
+// TestTitleLeavesTheRestAlone records that Title touches only the first rune
+// today. Whether the rest should be lowercased is undecided.
+//
+// bite-exempt: pins today's answer on the remaining runes, which no change here fixes
+func TestTitleLeavesTheRestAlone(t *testing.T) {
+	if got := Title("aDA"); got != "hi ADA" {
+		t.Fatalf("Title(%q) = %q, want the rest left alone", "aDA", got)
+	}
+}
