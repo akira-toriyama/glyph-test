@@ -6,7 +6,10 @@
 // here.
 package greet
 
-// Greet addresses someone by name.
+import "strings"
+
+// Greet addresses someone by name, ignoring whatever whitespace the caller
+// happened to pass.
 func Greet(name string) string {
-	return "hi " + name
+	return "hi " + strings.TrimSpace(name)
 }
