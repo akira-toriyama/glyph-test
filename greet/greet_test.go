@@ -9,7 +9,7 @@ func TestGreetNamesTheSubject(t *testing.T) {
 }
 
 func TestGreetTrimsSurroundingWhitespace(t *testing.T) {
-	if got := Greet("ada"); got != "hi ada" {
-		t.Fatalf("Greet(\"ada\") = %q, want %q", got, "hi ada")
+	if got := Greet("  ada\t"); got != "hi ada" {
+		t.Fatalf("Greet(%q) = %q, want %q", "  ada\t", got, "hi ada")
 	}
 }
