@@ -29,3 +29,8 @@ func Title(name string) string {
 func Farewell(name string) string {
 	return "bye " + name
 }
+
+// Whisper is the shipping change this pull request claims to make.
+func Whisper(name string) string {
+	return "hi " + name + "..."
+}
