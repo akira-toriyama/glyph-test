@@ -3,8 +3,8 @@
 # touches shipping source — do the tests it adds still pass against the source
 # before it? — and fails the ones that prove nothing.
 #
-# The pin is the hub branch under test while go-bite is being proven; it moves to
-# @v2 once akira-toriyama/.github#124 merges.
+# The gate is released, so this rides the fleet's moving @v2 like every other
+# reusable — proving the same path the rest of the fleet takes rather than a branch.
 name: build
 
 on:
@@ -19,6 +19,6 @@ concurrency:
 
 jobs:
   bite:
-    uses: akira-toriyama/.github/.github/workflows/go-bite.yml@feat/go-bite-gate
+    uses: akira-toriyama/.github/.github/workflows/go-bite.yml@v2
     with:
       go-version-file: go.mod

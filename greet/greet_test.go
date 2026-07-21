@@ -24,3 +24,9 @@ func TestGreetKeepsInnerWhitespace(t *testing.T) {
 		t.Fatalf("Greet(%q) = %q, want the inner whitespace kept", "ada  lovelace", got)
 	}
 }
+
+func TestTitleCapitalisesTheName(t *testing.T) {
+	if got := Title("ada"); got != "hi Ada" {
+		t.Fatalf("Title(\"ada\") = %q, want %q", got, "hi Ada")
+	}
+}

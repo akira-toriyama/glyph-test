@@ -19,3 +19,8 @@ func Greet(name string) string {
 func Shout(name string) string {
 	return strings.ToUpper(Greet(name))
 }
+
+// Title greets with the name capitalised.
+func Title(name string) string {
+	return "hi " + strings.ToUpper(name[:1]) + name[1:]
+}
