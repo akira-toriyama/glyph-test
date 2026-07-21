@@ -13,3 +13,9 @@ import "strings"
 func Greet(name string) string {
 	return "hi " + strings.TrimSpace(name)
 }
+
+// Shout greets in capitals. It is the shipping change this pull request makes;
+// the test beside it deliberately pins something else.
+func Shout(name string) string {
+	return strings.ToUpper(Greet(name))
+}
