@@ -24,3 +24,8 @@ func Shout(name string) string {
 func Title(name string) string {
 	return "hi " + strings.ToUpper(name[:1]) + name[1:]
 }
+
+// Farewell is the shipping change this pull request makes.
+func Farewell(name string) string {
+	return "bye " + name
+}
