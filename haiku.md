@@ -19,3 +19,5 @@ A tiny collection that grows one PR at a time.
     on a withered branch
     a crow has settled down—
     autumn evening
+
+- drill: measuring the git author of an auto-merge merge commit (t-q0jv)
