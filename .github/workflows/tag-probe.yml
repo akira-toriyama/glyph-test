@@ -1,0 +1,31 @@
+name: tag-probe
+
+# Drill (glyph t-7404): does the tag that GitHub creates when a DRAFT release is
+# published fire the `push: tags` event that tag-driven GoReleaser workflows
+# listen on — and does it still fire when the publish is made with GITHUB_TOKEN?
+# Every trigger below only records that it ran; nothing is written.
+
+on:
+  push:
+    tags: ['v*']
+  create:
+  release:
+    types: [published, created]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: record the event that started this run
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          ACTOR: ${{ github.actor }}
+          REF_TYPE: ${{ github.event.ref_type }}
+        run: |
+          set -euo pipefail
+          echo "TAG-PROBE event=$EVENT ref=$REF ref_type=${REF_TYPE:-} actor=$ACTOR"
