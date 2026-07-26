@@ -40,3 +40,9 @@ func TestTitleLeavesTheRestAlone(t *testing.T) {
 		t.Fatalf("Title(%q) = %q, want the rest left alone", "aDA", got)
 	}
 }
+
+func TestWhisper(t *testing.T) {
+	if got := Whisper("Ada"); got != "hi ada" {
+		t.Fatalf("Whisper(Ada) = %q, want %q", got, "hi ada")
+	}
+}
