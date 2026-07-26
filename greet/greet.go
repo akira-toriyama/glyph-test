@@ -29,3 +29,9 @@ func Title(name string) string {
 func Farewell(name string) string {
 	return "bye " + name
 }
+
+// Whisper returns the greeting in lower case, so the release drill has a
+// release-worthy change to classify.
+func Whisper(name string) string {
+	return strings.ToLower(Greet(name))
+}
