@@ -1,0 +1,47 @@
+# A SECOND glyph pin site, on purpose.
+#
+# Why a repo that already has one needs another. `glyph-pin-rewrite`
+# (akira-toriyama/.github) opens ONE pull request per repo carrying EVERY pin
+# site in it. Whether that batching works — create the branch once, write the
+# second file onto the branch rather than off the default branch, open a single
+# pull request — is a code path that only runs when a repo has two or more pin
+# sites, and `glyph-test` had exactly one. So the live-fire range could not fire
+# at the shape it most needed to.
+#
+# `sill` has that shape for real: `build.yml` AND `release.yml`, four references
+# across two files. sill is also the repo the v0.11.2 rollout's census LOST,
+# because it keyed on the filename `release.yml` and sill's other site is not
+# called that. Both facts point the same way — the two-file case is the one that
+# goes wrong, so it is the one the range must model.
+#
+# This file therefore exists to be REWRITTEN. It installs glyph and does nothing
+# with it; its value is the `@tag` and the `version:` below, which must move in
+# lockstep with every other glyph pin in this repo and must arrive in the SAME
+# pull request as `release.yml`'s. If a future rollout opens two pull requests
+# here, or leaves this file behind, the batching broke.
+#
+# workflow_dispatch only: nothing should run this on a schedule or a push. The
+# job is a no-op by design — running it proves nothing that the pin does not.
+
+name: pin-probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # No checkout: this step needs nothing from the repo, and not taking a
+      # checkout token is cheaper than remembering to drop it.
+      - uses: akira-toriyama/glyph/.github/actions/install@v0.11.2
+        with:
+          version: v0.11.2
+          token: ${{ github.token }}
+
+      - name: Report which glyph this repo's second pin site installs
+        run: glyph --version
