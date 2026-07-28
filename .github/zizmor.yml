@@ -20,3 +20,4 @@ rules:
         actions/*: ref-pin
         akira-toriyama/*: ref-pin
         "*": hash-pin
+# drift-marker t-z7c1 live-fire 114405
