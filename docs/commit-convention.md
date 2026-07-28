@@ -16,4 +16,3 @@ its next run.
 The format is enforced in CI by the shared `commit-lint.yml` workflow, which is
 distributed to every repo the same way, so a non-conforming message fails the
 check on each pull request.
-# drift-marker t-z7c1 live-fire 114403
