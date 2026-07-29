@@ -16,6 +16,15 @@ linters:
     - misspell
     - unconvert
     - revive
+  settings:
+    gosec:
+      # Direction B of the rehearsal: gosec is STILL not in `enable` above —
+      # only the go-ci floor's `--enable` turns it on. These includes must
+      # nonetheless scope it (G306 must stop firing), proving repo settings
+      # compose with a floor-enabled linter instead of being replaced.
+      includes:
+        - G204 # subprocess launched with a non-constant argument
+        - G304 # file read from a non-constant path
 
 formatters:
   enable:

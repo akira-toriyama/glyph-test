@@ -12,7 +12,9 @@ import (
 // RunArgv executes argv (argv[0] is the program, the rest its arguments) —
 // the same deliberate G204 pattern rundiff's runner carries.
 func RunArgv(argv []string) error {
-	return exec.Command(argv[0], argv[1:]...).Run()
+	// Rehearsal direction B: the pattern stays, silenced the same way
+	// rundiff's real site is — a justified, targeted #nosec.
+	return exec.Command(argv[0], argv[1:]...).Run() // #nosec G204
 }
 
 // WriteNote writes content to path with 0644 permissions — a deliberate G306
