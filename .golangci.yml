@@ -1,0 +1,23 @@
+# TEMPORARY — lint-floor rehearsal (t-5xyp). Deliberately mirrors the pre-gosec
+# 8-linter template pare/rundiff carried: gosec is absent here, so it runs ONLY
+# if the go-ci floor's `--enable` actually adds it. Delete after the rehearsal.
+version: "2"
+
+run:
+  timeout: 3m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - unconvert
+    - revive
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

@@ -1,0 +1,22 @@
+# TEMPORARY live ammunition for the fleet lint-floor rehearsal (t-5xyp).
+# Calls go-ci from the POC branch (NOT @v2) so the new `--enable` floor can be
+# observed on real CI before any pin moves. Delete together with probe/ and
+# .golangci.yml when the rehearsal PR is closed.
+name: lint-floor-probe
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-floor-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@ci/lint-floor-poc
+    with:
+      runners: '["ubuntu-latest"]'
