@@ -34,7 +34,7 @@ updates:
     # gitmoji + Conventional Commits so bot PRs match the house convention
     # (CONTRIBUTING.md). Bots are exempt from commit-lint, so this is decoration.
     commit-message:
-      prefix: ":arrow_up: build(deps)"
+      prefix: ":arrow_up:(deps) "
 
   # Go module updates for the Go tools (pare, furrow, glyph, …): dependency +
   # security updates, batched into one weekly PR. Appended by fleet-sync only
@@ -51,4 +51,4 @@ updates:
       gomod:
         patterns: ["*"]
     commit-message:
-      prefix: ":arrow_up: build(deps)"
+      prefix: ":arrow_up:(deps) "
