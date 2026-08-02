@@ -1,0 +1,13 @@
+# Fire-drill target for the distributed actionlint gate (t-ya55). The first
+# revision of this file is DELIBERATELY broken (needs: names a job that does
+# not exist) to prove the gate goes red; a follow-up commit fixes it to prove
+# the gate goes green. The PR is closed without merging either way.
+name: actionlint-fire-drill
+on:
+  workflow_dispatch:
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    needs: missing-job
+    steps:
+      - run: echo "fire drill"
