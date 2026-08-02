@@ -1,0 +1,23 @@
+# actionlint caller (akira-toriyama/.github#159, t-ya55).
+#
+# Live-fired first at the IMMUTABLE v2.2.1 (run 30733805830: the reusable
+# resolved, checksum-verified the pinned actionlint binary, and linted this
+# repo's workflows clean) — THEN v2 was moved onto v2.2.1 and this caller was
+# repointed at the moving @v2, which is the house form. The second green is
+# what proves the moved v2 resolves.
+#
+# Once the fleet stub ships (fleet/actionlint.yml + MANIFEST), fleet-sync
+# overwrites this file with the canonical caller — that overwrite is expected,
+# not drift.
+
+name: actionlint
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    uses: akira-toriyama/.github/.github/workflows/actionlint.yml@v2
