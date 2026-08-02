@@ -153,6 +153,73 @@ jobs:
             echo "::warning::this binary has no incomplete-walk gate — the arms below MUST fail, and that failure is the drill's other half"
           fi
 
+      # One home for what "the gate fired" means, because getting it wrong is
+      # not hypothetical: Arm 2 shipped asserting `exit == 4` plus the clause
+      # ANYWHERE on stderr, and passed at glyph-ref=v0.12.0 — measured, run
+      # 30734646022. v0.12.0 WARNS the very same clause ("all 25 commit(s) …
+      # were unknown to akira-toriyama/glyph") while handing down a verdict
+      # anyway, and then exits 4 for an unrelated reason, the published-floor
+      # guard. Both halves of the assertion were satisfied by the code that has
+      # no gate.
+      #
+      # So the verdict is read out of the ERROR ENVELOPE and nowhere else: the
+      # refusal glyph actually returned, not a warning that happens to share its
+      # vocabulary. `sed -n '/^[{]/,$p'` is the house sieve for this — stderr
+      # carries ::warning:: annotations before the JSON, and jq must never see
+      # them.
+      - name: Define what "the gate fired" means, once
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/assert_refusal.sh" <<'SH'
+          # assert_refusal <arm> <stderr-file> <exit-status> <shortfall-clause>
+          # `local`, and not named `status`: these run in the arm's own shell
+          # next to its own variables, and `status` is read-only in some shells
+          # this helper gets sourced into while being tested.
+          assert_refusal() {
+            local arm="$1" errfile="$2" rc="$3" clause="$4" code msg
+            if [ "$rc" -ne 4 ]; then
+              echo "::error::arm $arm exited $rc, want 4"
+              sed -n '1,60p' "$errfile"
+              return 1
+            fi
+            sed -n '/^[{]/,$p' "$errfile" > "$errfile.envelope"
+            if ! jq -e . "$errfile.envelope" > /dev/null 2>&1; then
+              echo "::error::arm $arm exited 4 but printed no JSON error envelope — glyph did not refuse, something else did"
+              sed -n '1,60p' "$errfile"
+              return 1
+            fi
+            code=$(jq -r '.error.code // ""' "$errfile.envelope")
+            msg=$(jq -r '.error.message // ""' "$errfile.envelope")
+            echo "arm $arm envelope: code=$code"
+            if [ "$code" != "4" ]; then
+              echo "::error::arm $arm envelope code is $code, want 4"
+              return 1
+            fi
+            case "$msg" in
+              *"refusing to hand down a verdict"*) ;;
+              *) echo "::error::arm $arm was refused by something that is not the walk gate: $msg"; return 1 ;;
+            esac
+            case "$msg" in
+              *"$clause"*) ;;
+              *) echo "::error::arm $arm hit the walk gate but for the wrong shortfall — wanted '$clause', got: $msg"; return 1 ;;
+            esac
+            echo "arm $arm: the walk gate refused, and the shortfall is '$clause'"
+          }
+          SH
+          # Positive control: the helper must reject the exact shape that fooled
+          # it. A guard for a false green that cannot demonstrate the false green
+          # is the same kind of claim it exists to stop.
+          . "$RUNNER_TEMP/assert_refusal.sh"
+          {
+            echo '##[warning]glyph: all 25 commit(s) in v0.2.1..HEAD were unknown to akira-toriyama/glyph'
+            echo '{"error":{"code":4,"message":"computed version v0.3.0 is not greater than the latest published release v0.12.0 — refusing the draft"}}'
+          } > "$RUNNER_TEMP/canary.err"
+          if assert_refusal canary "$RUNNER_TEMP/canary.err" 4 "unknown to akira-toriyama/glyph" 2>/dev/null; then
+            echo "::error::the helper accepted a floor-guard refusal carrying the clause only in a warning — the false green is still open"
+            exit 1
+          fi
+          echo "canary: the helper rejects the pre-#86 shape that passed on 2026-08-02 (run 30734646022)"
+
       - name: Record the rolling draft before any arm runs
         id: before
         run: |
@@ -186,6 +253,7 @@ jobs:
         working-directory: range-shallow
         run: |
           set -euo pipefail
+          . "$RUNNER_TEMP/assert_refusal.sh"
           echo "is-shallow=$(git rev-parse --is-shallow-repository)"
           status=0
           "$GITHUB_WORKSPACE/glyph/bin/glyph" release --json --repo "$RANGE_REPO" \
@@ -193,17 +261,7 @@ jobs:
           cat arm1.err >&2
           cat arm1.json || true
           echo "exit=$status"
-          if [ "$status" -ne 4 ]; then
-            echo "::error::shallow arm exited $status, want 4"
-            exit 1
-          fi
-          # The integer alone is a false green: v0.12.0 reaches exit 4 here too,
-          # by the published-floor guard, having already walked and judged.
-          if ! grep -q 'shallow checkout' arm1.err; then
-            echo "::error::exit 4 carried no shallow-checkout clause — this is some OTHER refusal, not the walk gate"
-            sed -n '1,40p' arm1.err
-            exit 1
-          fi
+          assert_refusal 1 arm1.err "$status" 'shallow checkout'
 
       # Arm 1 failing must not hide Arm 2. Measured on run 30727685168, the red
       # half at glyph-ref=v0.12.0: Arm 1 failed as designed, job fail-fast then
@@ -217,21 +275,14 @@ jobs:
         working-directory: range-full
         run: |
           set -euo pipefail
+          . "$RUNNER_TEMP/assert_refusal.sh"
           status=0
           "$GITHUB_WORKSPACE/glyph/bin/glyph" release --dry-run --json --repo "$OTHER_REPO" \
             > arm2.json 2> arm2.err || status=$?
           cat arm2.err >&2
           cat arm2.json || true
           echo "exit=$status"
-          if [ "$status" -ne 4 ]; then
-            echo "::error::wrong-repo arm exited $status, want 4"
-            exit 1
-          fi
-          if ! grep -q "unknown to $OTHER_REPO" arm2.err; then
-            echo "::error::exit 4 carried no unknown-to-repository clause — this is the floor guard, not the walk gate"
-            sed -n '1,40p' arm2.err
-            exit 1
-          fi
+          assert_refusal 2 arm2.err "$status" "unknown to $OTHER_REPO"
 
       # The claim under test is "refuses BEFORE touching anything", and a claim
       # about writes is settled by reading the artefact back.
