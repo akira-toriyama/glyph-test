@@ -1,0 +1,19 @@
+# LIVE FIRE for the actionlint reusable (akira-toriyama/.github#159, t-ya55).
+#
+# Pinned to the IMMUTABLE v2.2.1, not the moving @v2, on purpose: this caller
+# exists to prove the reusable resolves and runs from a real consumer repo
+# BEFORE `v2` is moved onto that tag. Once the fleet stub ships
+# (fleet/actionlint.yml + MANIFEST), fleet-sync overwrites this file with the
+# canonical @v2 caller — that overwrite is expected, not drift.
+
+name: actionlint
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    uses: akira-toriyama/.github/.github/workflows/actionlint.yml@v2.2.1
