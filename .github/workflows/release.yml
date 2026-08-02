@@ -55,7 +55,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: read
+      # write, though this job only reads. A GITHUB_TOKEN with `contents: read`
+      # sees ZERO draft releases — GitHub exposes drafts only to push access —
+      # so the listing came back empty and the assert read it as "the draft is
+      # gone". Measured on run 30737721992. Any read-back that concludes
+      # anything from a COUNT of drafts has to hold this permission, or its
+      # zero is a statement about the token and not about the repository.
+      contents: write
     steps:
       - name: Read the release back and assert exactly one managed draft
         env:
