@@ -1,0 +1,214 @@
+# The incomplete-walk gate, fired with live ammunition.
+#
+# Why this file exists. `release.yml` next door installs a RELEASED glyph
+# through the composite action, so it can only ever fire the gates that are in
+# the last tag. The gate this range most needs to prove — a walk that could not
+# read its range refuses to hand down a verdict (glyph #86, exit 4) — has never
+# been in a tag, and the next tag glyph cuts is v1.0.0, which is not due yet.
+# Waiting for it means the fleet's most destructive code path stays verified
+# only inside glyph's own httptest fakes.
+#
+# So this job builds glyph FROM SOURCE at whatever ref you name and points it at
+# the real GitHub API. It deliberately does NOT install through the composite
+# action: that path (checksum + provenance + the pinned `version:` input) is
+# unchanged since v0.12.0, `release.yml` exercises it on every push, and adding
+# a fifth `uses: akira-toriyama/glyph/...` pin site here would corrupt the
+# rewriter's live-fire range (see pin-probe.yml).
+#
+# Fired both ways, which is the whole point (fleet-change-policy.md, "Stage 2
+# means both halves"):
+#
+#   glyph-ref: main     -> every arm exits 4 with its own shortfall clause.
+#                          This job is GREEN.
+#   glyph-ref: v0.12.0  -> this job is RED, and that redness is the evidence.
+#                          Before #86 an incomplete walk still handed down a
+#                          verdict: it exits 1 (shallow, none fold) or 4 for the
+#                          WRONG reason (the published-floor guard, not the
+#                          walk). A drill that asserted only `exit == 4` would
+#                          have gone green on both — which is why every arm
+#                          below asserts its shortfall CLAUSE, not the integer.
+#
+# The shallow arm runs for real (no --dry-run) on purpose. "The gate refuses
+# before it touches anything" is a claim about writes, and the only honest way
+# to check a write is to read the artefact back — so the draft's updated_at is
+# captured before the arms and compared after.
+name: livefire
+
+on:
+  workflow_dispatch:
+    inputs:
+      glyph-ref:
+        description: "glyph ref to build the binary from (branch, tag or SHA)"
+        type: string
+        default: main
+
+# Share release.yml's group: the shallow arm is a real release run against this
+# repository, and two of those at once would race over the same rolling draft.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  incomplete-walk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RANGE_REPO: ${{ github.repository }}
+      # A repository the token can read that does NOT contain this range's
+      # commits — what a wrong --repo/$GITHUB_REPOSITORY looks like from inside
+      # the walk. glyph is public, so this is a read the default token can make.
+      OTHER_REPO: akira-toriyama/glyph
+    steps:
+      # The range, whole. This is the control checkout AND the wrong-repo arm's
+      # checkout: both need the tags and the full history so that the only thing
+      # wrong with the walk is the thing the arm makes wrong.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          path: range-full
+
+      # The same range, blinded. fetch-depth: 1 is actions/checkout's DEFAULT —
+      # this arm is one deleted line away from every release workflow in the
+      # fleet, which is why it is the arm that matters. Note it also arrives
+      # with no tags (checkout passes --no-tags at any non-zero depth), so the
+      # walk has no base either; the gate must fire on the shallow clone before
+      # any of that reaches a verdict.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          path: range-shallow
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: akira-toriyama/glyph
+          ref: ${{ inputs.glyph-ref }}
+          # build.sh stamps the version with `git describe --tags`, which needs
+          # the tags and the history behind them.
+          fetch-depth: 0
+          persist-credentials: false
+          path: glyph
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: glyph/go.mod
+
+      - name: Build glyph from source
+        run: sh build.sh
+        working-directory: glyph
+
+      # A drill is worth nothing if it fired the wrong binary. This happened
+      # while designing this file: a binary named for HEAD turned out to carry
+      # v0.12.0's code, and an arm was read as proving the gate when it was
+      # proving its absence. So: ask the binary what it is, from its own
+      # embedded build info, and refuse to continue on a mismatch.
+      - name: Assert the binary is the ref that was asked for
+        working-directory: glyph
+        env:
+          # Through the environment, never interpolated into the script: a
+          # workflow_dispatch input is attacker-controlled text as far as
+          # zizmor's template-injection rule is concerned, and it is right.
+          GLYPH_REF: ${{ inputs.glyph-ref }}
+        run: |
+          set -euo pipefail
+          want="$(git rev-parse HEAD)"
+          got="$(go version -m bin/glyph | awk '$1=="build" && $2=="vcs.revision" {print $3}')"
+          echo "ref=$GLYPH_REF  checkout=$want  binary=$got"
+          bin/glyph --version
+          if [ "$want" != "$got" ]; then
+            echo "::error::binary was built from $got, not the $want this job checked out"
+            exit 1
+          fi
+
+      - name: Record the rolling draft before any arm runs
+        id: before
+        run: |
+          set -euo pipefail
+          gh api "repos/$RANGE_REPO/releases" \
+            --jq '[.[] | select(.draft) | {id, tag_name, updated_at}] | sort_by(.id) | tostring' \
+            > before.json
+          cat before.json
+          echo "drafts=$(cat before.json)" >> "$GITHUB_OUTPUT"
+
+      # The escape hatch, first. A gate that rejects everything is as broken as
+      # one that rejects nothing, so the complete walk must reach a verdict with
+      # this very binary before any arm is allowed to mean anything.
+      - name: Control — the complete walk still reaches a verdict
+        working-directory: range-full
+        run: |
+          set -euo pipefail
+          status=0
+          "$GITHUB_WORKSPACE/glyph/bin/glyph" release --dry-run --json --repo "$RANGE_REPO" \
+            > control.json 2> control.err || status=$?
+          cat control.err >&2
+          cat control.json
+          if [ "$status" -ne 0 ]; then
+            echo "::error::the control walk exited $status — the arms below prove nothing until a complete walk passes"
+            exit 1
+          fi
+          jq -e '.tag and .action' control.json > /dev/null
+
+      - name: "Arm 1 — shallow checkout (REAL run, no --dry-run)"
+        working-directory: range-shallow
+        run: |
+          set -euo pipefail
+          echo "is-shallow=$(git rev-parse --is-shallow-repository)"
+          status=0
+          "$GITHUB_WORKSPACE/glyph/bin/glyph" release --json --repo "$RANGE_REPO" \
+            > arm1.json 2> arm1.err || status=$?
+          cat arm1.err >&2
+          cat arm1.json || true
+          echo "exit=$status"
+          if [ "$status" -ne 4 ]; then
+            echo "::error::shallow arm exited $status, want 4"
+            exit 1
+          fi
+          # The integer alone is a false green: v0.12.0 reaches exit 4 here too,
+          # by the published-floor guard, having already walked and judged.
+          if ! grep -q 'shallow checkout' arm1.err; then
+            echo "::error::exit 4 carried no shallow-checkout clause — this is some OTHER refusal, not the walk gate"
+            sed -n '1,40p' arm1.err
+            exit 1
+          fi
+
+      - name: "Arm 2 — every commit unknown to the queried repository"
+        working-directory: range-full
+        run: |
+          set -euo pipefail
+          status=0
+          "$GITHUB_WORKSPACE/glyph/bin/glyph" release --dry-run --json --repo "$OTHER_REPO" \
+            > arm2.json 2> arm2.err || status=$?
+          cat arm2.err >&2
+          cat arm2.json || true
+          echo "exit=$status"
+          if [ "$status" -ne 4 ]; then
+            echo "::error::wrong-repo arm exited $status, want 4"
+            exit 1
+          fi
+          if ! grep -q "unknown to $OTHER_REPO" arm2.err; then
+            echo "::error::exit 4 carried no unknown-to-repository clause — this is the floor guard, not the walk gate"
+            sed -n '1,40p' arm2.err
+            exit 1
+          fi
+
+      # The claim under test is "refuses BEFORE touching anything", and a claim
+      # about writes is settled by reading the artefact back.
+      - name: Assert the arms wrote nothing
+        env:
+          BEFORE: ${{ steps.before.outputs.drafts }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$RANGE_REPO/releases" \
+            --jq '[.[] | select(.draft) | {id, tag_name, updated_at}] | sort_by(.id) | tostring' \
+            > after.json
+          echo "before: $BEFORE"
+          echo "after:  $(cat after.json)"
+          if [ "$BEFORE" != "$(cat after.json)" ]; then
+            echo "::error::a refusing walk changed the drafts — the gate did not fire before the write"
+            exit 1
+          fi
