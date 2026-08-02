@@ -27,146 +27,59 @@ permissions:
   contents: write
 
 jobs:
+  # DRILL BRANCH ONLY (t-kcm4). This is what release.yml becomes once glyph's
+  # reusable has a verdict-only mode: a caller, not a hand copy. Pinned to the
+  # branch SHA that adds the mode, because there is no tag yet — which is also
+  # why `glyph-version` is passed: `job.workflow_ref` names a SHA, and the
+  # reusable refuses to guess a binary version from a non-tag ref.
   release:
+    uses: akira-toriyama/glyph/.github/workflows/release.yml@594ba5563666cc365042d906f41896d50fa490ec
+    with:
+      # No `app`, no `binary` — the verdict-only mode under test.
+      glyph-version: v0.12.0
+      dry-run: ${{ github.event.inputs.dry_run == 'true' }}
+      install-notes: |
+        ## Install
+
+        Nothing to install — glyph-test is a demo; the release IS the artifact.
+    permissions:
+      contents: write
+
+  # The read-back assert does not come free with the reusable: it lives in the
+  # caller today, so keep it here and prove it still fires against a draft the
+  # REUSABLE wrote. If this shape holds, moving the assert into the reusable is
+  # the follow-up — every consumer would then count its own artefact.
+  read-back:
+    needs: release
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          # glyph walks the tags and the range out of LOCAL git, so the full
-          # history must be here.
-          fetch-depth: 0
-          # Every release write goes through glyph/gh + the GH_TOKEN env,
-          # never git push — don't leave the checkout token in .git/config
-          # (zizmor artipacked).
-          persist-credentials: false
-
-      # The install logic is glyph's own composite action, not a copy of it.
-      # This step used to inline the download + checksum + provenance gate,
-      # pinned at v0.3.0 — seven releases behind the workflows around it, which
-      # is exactly the trap the rollout runbook names: every *workflow* on the
-      # new tag while the *binary* stays old. Referencing the action by full
-      # path + tag keeps the two on one revision by construction.
-      - uses: akira-toriyama/glyph/.github/actions/install@v0.12.0
-        with:
-          version: v0.12.0
-          token: ${{ github.token }}
-
-      # ONE walk composes the whole verdict (tag + body) and, unless this is
-      # a dry run, upserts the rolling draft in the same call. Exit 1 is the
-      # uniform soft no-release: fold it into a success no-op here.
-      - name: Compose the verdict and upsert the rolling DRAFT
+      - name: Read the release back and assert exactly one managed draft
         env:
           GH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
           set -euo pipefail
-          printf '%s\n' "## Install" "" "Nothing to install — glyph-test is a demo; the release IS the artifact." > "$RUNNER_TEMP/install-notes.md"
-          args=(release --json --footer-file "$RUNNER_TEMP/install-notes.md")
-          if [ "$DRY_RUN" = "true" ]; then
-            args=(release --dry-run --json --footer-file "$RUNNER_TEMP/install-notes.md")
-          fi
-          status=0
-          glyph "${args[@]}" > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/verdict.err" || status=$?
-          cat "$RUNNER_TEMP/verdict.err" >&2
-          cat "$RUNNER_TEMP/verdict.json" || true
-          if [ "$status" -eq 1 ]; then
-            echo "::notice::no release-worthy changes since the last tag — nothing to do."
-            exit 0
-          fi
-          exit "$status"
-
-      # Green is not delivered. The step above proves glyph EXITED 0, not that
-      # the release GitHub now holds is the one it printed — and glyph cannot
-      # close that gap from inside. `apiRelease` decodes exactly four fields off
-      # its own write's response (id, tag_name, draft, html_url) and compares
-      # none of them against what it sent, so `target_commitish` — the field
-      # that decides WHICH COMMIT a human's publish tags — is written and then
-      # read by nothing, anywhere in the fleet. And a retried DELETE answered
-      # 404 returns `alreadyGone`, on which glyph deliberately declines to claim
-      # the draft is gone and exits 0 anyway (t-yq7m); nothing settles that
-      # claim today, because `exit 1` is folded into a green no-op above and no
-      # step looks at the drafts afterwards. Both are settled here the only way
-      # that counts: read the artefact back and count it.
-      #
-      # Keyed on the glyph-managed-draft SET, never on the verdict's `url`: a
-      # draft's html_url is a per-write nonce (`untagged-<random>`, measured
-      # rotating across consecutive writes to one release id), so keying on it
-      # turns ordinary list-endpoint lag into an unreproducible hard red.
-      # livefire.yml keys its own read-back on {id, tag_name} for this reason.
-      #
-      # No `if: always()`: on exit 2/3/4 the step above fails the job and this
-      # one must not run — a walk that refused to judge wrote nothing, and there
-      # is no verdict to read back against.
-      - name: Read the release back and assert it is the verdict
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # The guard is the INPUT, not the JSON: `action` is computed before
-          # the --dry-run branch, so a dry run and a real run that found nothing
-          # print the same shape. The JSON cannot tell "wrote nothing because it
-          # was told not to" from "wrote nothing because there was nothing to
-          # write". DRY_RUN can.
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
-        run: |
-          set -euo pipefail
-          V="$RUNNER_TEMP/verdict.json"
-          # Mirrors glyph's glyphDrafts: Draft && HasPrefix "v" && parses as a
-          # version. A cross-REPO copy of a rule whose home is glyph — no test
-          # here can hold the two together, so re-derive it if that moves.
           export DRAFT_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
-
-          if [ "${DRY_RUN:-}" = "true" ]; then
-            echo "SKIPPED — dry run: nothing was written, so there is nothing to read back."
-            exit 0
-          fi
-          if ! jq -e . "$V" > /dev/null 2>&1; then
-            echo "::error::$V holds no JSON verdict — nothing to read back against"
-            exit 1
-          fi
-
-          # --paginate because glyph's own Releases() follows pagination; a
-          # one-page read would let a duplicate draft on page 2 go uncounted.
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             | jq -s 'add | [.[] | select(.draft) | select(.tag_name | test(env.DRAFT_RE))]' \
-            > "$RUNNER_TEMP/managed.json"
-          n=$(jq length "$RUNNER_TEMP/managed.json")
-          want_tag=$(jq -r '.tag // ""' "$V")
-          action=$(jq -r '.action // "?"' "$V")
-
-          if [ -z "$want_tag" ]; then
-            if [ "$n" -ne 0 ]; then
-              echo "::error::glyph reported action=$action (no release due) but $n glyph-managed draft(s) survive — the unconfirmed delete did not converge"
-              jq -r '.[] | "  id=\(.id) tag=\(.tag_name) updated=\(.updated_at)"' "$RUNNER_TEMP/managed.json"
-              exit 1
-            fi
-            echo "read back: 0 glyph-managed drafts — matches action=$action"
-            exit 0
-          fi
-
+            > managed.json
+          n=$(jq length managed.json)
+          jq -r '.[] | "  id=\(.id) tag=\(.tag_name) name=\(.name) target=\(.target_commitish)"' managed.json
           if [ "$n" -ne 1 ]; then
-            echo "::error::$n glyph-managed drafts exist, want exactly 1 — a stale draft survived its delete, or a replayed write left a duplicate"
-            jq -r '.[] | "  id=\(.id) tag=\(.tag_name) updated=\(.updated_at)"' "$RUNNER_TEMP/managed.json"
+            echo "::error::$n glyph-managed drafts exist, want exactly 1"
             exit 1
           fi
-
-          bad=0
-          got_tag=$(jq -r '.[0].tag_name' "$RUNNER_TEMP/managed.json")
-          got_name=$(jq -r '.[0].name' "$RUNNER_TEMP/managed.json")
-          got_draft=$(jq -r '.[0].draft' "$RUNNER_TEMP/managed.json")
-          got_target=$(jq -r '.[0].target_commitish' "$RUNNER_TEMP/managed.json")
-          if [ "$got_tag" != "$want_tag" ]; then
-            echo "::error::the surviving draft is tagged $got_tag, the verdict says $want_tag"; bad=1
+          if [ "${DRY_RUN:-}" = "true" ]; then
+            echo "dry run: the draft above must be UNCHANGED by this run."
+            exit 0
           fi
-          if [ "$got_name" != "$want_tag" ]; then
-            echo "::error::name is $got_name, want $want_tag"; bad=1
-          fi
-          if [ "$got_draft" != "true" ]; then
-            echo "::error::draft is $got_draft — this release is PUBLISHED; a tag exists that no human authorised"; bad=1
-          fi
+          got_target=$(jq -r '.[0].target_commitish' managed.json)
           if [ "$got_target" != "$GITHUB_SHA" ]; then
-            echo "::error::target_commitish is $got_target, but this run's commit is $GITHUB_SHA — publishing this draft would tag the wrong commit"; bad=1
+            echo "::error::target_commitish is $got_target, but this run's commit is $GITHUB_SHA"
+            exit 1
           fi
-          [ "$bad" -eq 0 ] || exit 1
-
-          echo "read back OK — 1 glyph-managed draft: id=$(jq -r '.[0].id' "$RUNNER_TEMP/managed.json") tag=$got_tag name=$got_name target=$got_target"
-          echo "NOT compared: body (measured byte-identical between what glyph rendered and what GitHub stored — no failure to point at); html_url (a per-write nonce, not an identity); assets/prerelease (glyph writes neither)."
+          echo "read back OK — the draft the REUSABLE wrote targets this run's commit"
