@@ -21,3 +21,4 @@ A tiny collection that grows one PR at a time.
     autumn evening
 
 - drill: measuring the git author of an auto-merge merge commit (t-q0jv)
+- drill: discarding a second glyph-managed draft and updating the rolling one (t-37sv)
