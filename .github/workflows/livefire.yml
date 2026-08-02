@@ -34,6 +34,14 @@
 # captured before the arms and compared after.
 name: livefire
 
+# Which half a run was is otherwise unrecoverable from the run list: the display
+# title is "livefire" for every dispatch and the REST run object carries no
+# inputs at all, so "fired both ways" would be a claim backed only by logs that
+# Actions retention deletes. This is a label, not a second home for the
+# direction — the direction is still decided by which marker string the built
+# binary contains, below.
+run-name: livefire — glyph-ref=${{ inputs.glyph-ref }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -159,6 +167,7 @@ jobs:
       # one that rejects nothing, so the complete walk must reach a verdict with
       # this very binary before any arm is allowed to mean anything.
       - name: Control — the complete walk still reaches a verdict
+        id: control
         working-directory: range-full
         run: |
           set -euo pipefail
@@ -196,7 +205,15 @@ jobs:
             exit 1
           fi
 
+      # Arm 1 failing must not hide Arm 2. Measured on run 30727685168, the red
+      # half at glyph-ref=v0.12.0: Arm 1 failed as designed, job fail-fast then
+      # SKIPPED both Arm 2 and the write-back assert, and the run was reported
+      # as having fired both halves when the red half had fired one arm of
+      # three. Gated on the control rather than on always(): the arms mean
+      # nothing until a complete walk passes, and running them after a failed
+      # build would only add noise.
       - name: "Arm 2 — every commit unknown to the queried repository"
+        if: ${{ !cancelled() && steps.control.outcome == 'success' }}
         working-directory: range-full
         run: |
           set -euo pipefail
@@ -218,7 +235,12 @@ jobs:
 
       # The claim under test is "refuses BEFORE touching anything", and a claim
       # about writes is settled by reading the artefact back.
+      # Gated on the SNAPSHOT step, not on always(): if `before` never ran,
+      # BEFORE is the empty string and the comparison below reds with "a
+      # refusing walk changed the drafts" — a false red wearing a true red's
+      # message, which is worse than not running at all.
       - name: Assert the arms wrote nothing
+        if: ${{ !cancelled() && steps.before.outcome == 'success' }}
         env:
           BEFORE: ${{ steps.before.outputs.drafts }}
         run: |
