@@ -214,7 +214,12 @@ jobs:
             echo '##[warning]glyph: all 25 commit(s) in v0.2.1..HEAD were unknown to akira-toriyama/glyph'
             echo '{"error":{"code":4,"message":"computed version v0.3.0 is not greater than the latest published release v0.12.0 — refusing the draft"}}'
           } > "$RUNNER_TEMP/canary.err"
-          if assert_refusal canary "$RUNNER_TEMP/canary.err" 4 "unknown to akira-toriyama/glyph" 2>/dev/null; then
+          # `> /dev/null 2>&1`, both streams: the helper reports by printing
+          # `::error::…` on STDOUT, so silencing stderr alone left every GREEN
+          # run of this job carrying a red annotation for a rejection that was
+          # the point. An error annotation on a passing step is how a repository
+          # teaches people to stop reading annotations.
+          if assert_refusal canary "$RUNNER_TEMP/canary.err" 4 "unknown to akira-toriyama/glyph" > /dev/null 2>&1; then
             echo "::error::the helper accepted a floor-guard refusal carrying the clause only in a warning — the false green is still open"
             exit 1
           fi
