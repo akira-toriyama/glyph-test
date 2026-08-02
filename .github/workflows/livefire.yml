@@ -116,13 +116,33 @@ jobs:
           GLYPH_REF: ${{ inputs.glyph-ref }}
         run: |
           set -euo pipefail
-          want="$(git rev-parse HEAD)"
-          got="$(go version -m bin/glyph | awk '$1=="build" && $2=="vcs.revision" {print $3}')"
+          # NOT `go version -m … vcs.revision`: build.sh builds with -trimpath,
+          # which suppresses VCS stamping outright, so that field is empty for
+          # every ref and the check would pass by being blank on both sides.
+          want="$(git rev-parse --short HEAD)"
+          got="$(bin/glyph --version)"
           echo "ref=$GLYPH_REF  checkout=$want  binary=$got"
-          bin/glyph --version
-          if [ "$want" != "$got" ]; then
-            echo "::error::binary was built from $got, not the $want this job checked out"
+          case "$got" in
+            *"($want,"*) ;;
+            *) echo "::error::the binary does not name $want — it was built from some other tree"; exit 1 ;;
+          esac
+          # The label is only half of it. A binary NAMED for one ref while
+          # carrying another's code is the failure this drill actually hit
+          # while it was being designed, and it read as proof of the gate when
+          # it was proof of the gate's absence. So ask the code: the two shapes
+          # own mutually exclusive strings, and exactly one must be in there.
+          # `if`, not `cmd && var=1`: a `run:` block is bash -e, and the failing
+          # half of a short-circuit takes the whole step down with it.
+          gate=0; keep=0
+          if grep -qa 'refusing to hand down a verdict' bin/glyph; then gate=1; fi
+          if grep -qa 'glyph-managed draft(s) are kept' bin/glyph; then keep=1; fi
+          echo "post-#86 gate string: $gate    pre-#86 keepDrafts string: $keep"
+          if [ $((gate + keep)) -ne 1 ]; then
+            echo "::error::binary carries $gate gate marker(s) and $keep pre-gate marker(s) — want exactly one"
             exit 1
+          fi
+          if [ "$gate" -eq 0 ]; then
+            echo "::warning::this binary has no incomplete-walk gate — the arms below MUST fail, and that failure is the drill's other half"
           fi
 
       - name: Record the rolling draft before any arm runs
