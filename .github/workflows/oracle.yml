@@ -1,0 +1,60 @@
+# The GitHub-adapter oracle, on a schedule.
+#
+# glyph's internal/github tests all speak to an httptest fake — glyph's own
+# model of GitHub, which affirms glyph's assumptions for ever. The one test
+# that asks the REAL system is TestLiveFireDraftLifecycle (glyph t-2e11),
+# env-gated on GLYPH_LIVE_REPO and skipped everywhere hermetic. Something has
+# to actually set that env against a sandbox on a cadence, and this repository
+# IS the sandbox — its own GITHUB_TOKEN can write its own releases, which is a
+# credential no job in the glyph repo has for anybody else.
+#
+# The day this goes red is the day the fakes' shared premises drifted from the
+# real API — the day ~50 green tests in glyph started proving the wrong thing.
+# It already happened once before the oracle ever ran on a schedule: the
+# test's first draft asserted that re-deleting an absent release reports
+# already-gone, and the live API failed it (a fresh 404 stays an error;
+# t-yq7m's absorption is scoped to a retried attempt inside one call).
+#
+# Runs against glyph's default branch, not a tag: its verdict dates GitHub's
+# drift against the code as it is being written, and a red here must point at
+# a premise, never at a stale checkout.
+#
+# The drafts it mints are tagged livefire-2e11-* and deleted by the test
+# itself (it also sweeps strays a dead run left). They never collide with the
+# rolling draft release.yml owns — those are vX.Y.Z — so this does not share
+# release.yml's concurrency group; it only serialises with itself.
+name: oracle
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * *' # daily, offset from the fleet's 06:00 sync herd
+
+concurrency:
+  group: oracle
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  livefire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: akira-toriyama/glyph
+          persist-credentials: false
+          path: glyph
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: glyph/go.mod
+
+      - name: Fire the oracle at this repository
+        working-directory: glyph
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GLYPH_LIVE_REPO: ${{ github.repository }}
+        run: go test ./internal/github -run TestLiveFireDraftLifecycle -v
