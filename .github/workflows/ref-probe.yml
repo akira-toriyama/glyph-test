@@ -11,6 +11,21 @@ name: ref-probe
 # the fleet instead of the mis-triggered ones. lint.yml's evidence does not
 # carry over — it reads the expression on a `push` payload only.
 #
+# Answered on 2026-08-11: POPULATED on both, dispatched from main and from a
+# topic branch. glyph #156 shipped the guard on that evidence.
+#
+# Second question (glyph t-h4dg follow-up): can a PROCESS read the same fact?
+# The workflow-layer guard only covers repos that call glyph's reusable, and
+# four repos — canon, dotfiles, swift-toml-edit, sill — hand-copy the release
+# step instead, unguarded. One guard inside `glyph release` would cover every
+# path, but the binary has no expression context: `gitsource.DefaultBranch`
+# reads `refs/remotes/<remote>/HEAD`, which actions/checkout never writes, so
+# it is a permanent no-op in CI. The remaining candidate is the event payload
+# on disk at $GITHUB_EVENT_PATH — the very file the expression above is
+# rendered from. Whether the file is present, readable and carries the key is
+# what the second step measures, because "the expression resolves" is evidence
+# about the runner's template engine, not about a process's filesystem.
+#
 # Dispatch-only and read-only: the job records what the event carried and
 # exits. Run it twice — `--ref main` and `--ref <any branch>` — because the
 # question is about the second one and only the pair distinguishes "empty on
@@ -40,4 +55,29 @@ jobs:
             echo "REF-PROBE verdict: EMPTY — a dispatch payload does not carry default_branch, so the guard needs another source"
           else
             echo "REF-PROBE verdict: POPULATED — the guard can compare $REF against refs/heads/$DEFAULT_BRANCH"
+          fi
+
+      - name: record what a PROCESS can read from the event payload on disk
+        run: |
+          set -euo pipefail
+          # No `env:` indirection here on purpose: a process reads the raw
+          # environment, so the probe must too. This is what `glyph release`
+          # would see — not what the template engine renders for a step.
+          echo "PAYLOAD-PROBE GITHUB_EVENT_NAME=${GITHUB_EVENT_NAME:-<unset>} GITHUB_REF=${GITHUB_REF:-<unset>}"
+          echo "PAYLOAD-PROBE GITHUB_EVENT_PATH=${GITHUB_EVENT_PATH:-<unset>}"
+          if [ -z "${GITHUB_EVENT_PATH:-}" ] || [ ! -r "$GITHUB_EVENT_PATH" ]; then
+            echo "PAYLOAD-PROBE verdict: UNREADABLE — a process cannot reach the payload, so a binary-side guard needs a different source"
+            exit 0
+          fi
+          bytes=$(wc -c < "$GITHUB_EVENT_PATH" | tr -d ' ')
+          db=$(jq -r '.repository.default_branch // empty' "$GITHUB_EVENT_PATH")
+          echo "PAYLOAD-PROBE bytes=$bytes repository.default_branch=[$db]"
+          # The two other keys a binary-side guard could lean on instead, so one
+          # dispatch answers the whole design question rather than the first
+          # candidate only.
+          echo "PAYLOAD-PROBE repository.full_name=[$(jq -r '.repository.full_name // empty' "$GITHUB_EVENT_PATH")] ref=[$(jq -r '.ref // empty' "$GITHUB_EVENT_PATH")]"
+          if [ -z "$db" ]; then
+            echo "PAYLOAD-PROBE verdict: KEY MISSING — the file is readable but carries no default_branch"
+          else
+            echo "PAYLOAD-PROBE verdict: READABLE — a process can compare \$GITHUB_REF against refs/heads/$db with no API call"
           fi
