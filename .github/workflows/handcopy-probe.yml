@@ -1,0 +1,100 @@
+# The HAND-COPY release shape, on demand — the path four repositories actually
+# run, which nothing in the fleet's live-fire range exercised until now.
+#
+# release.yml in this repository is a CALLER of glyph's reusable, so everything
+# proven here proves the reusable. But `canon`, `dotfiles`, `sill` and
+# `swift-toml-edit` do not call it: each hand-copies the release step into its
+# own workflow and invokes `glyph release` directly, because the reusable
+# validates "at most one of app/binary" and then builds that artifact, which a
+# library or a dotfiles repository has nothing to satisfy. Their pins are
+# binary-only. So a guard that lives in the WORKFLOW cannot reach them and a
+# guard that lives in the BINARY can — and this file is where that claim gets
+# fired rather than argued (glyph t-h4dg).
+#
+# The step below is the four repos' shape verbatim: `args=(release --json)`,
+# `--dry-run` appended from the input, stderr echoed, exit 1 folded into a green
+# no-op, every other status re-raised. No ref guard of its own, deliberately —
+# the whole question is what the BINARY does when the workflow does nothing.
+#
+# glyph is BUILT FROM SOURCE at a ref you name, not installed from a release:
+# the point is to judge a candidate that has no tag yet. Default `main`, so a
+# bare dispatch measures what the fleet's next tag would ship.
+#
+# dry_run defaults to TRUE. A dispatch that writes should be deliberate: this
+# upserts the same rolling draft release.yml owns, which is why it shares that
+# concurrency group. The draft is re-derived by the next push to main, so a
+# wrong one here is self-healing — that is what the sandbox is for.
+name: handcopy-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      glyph_ref:
+        description: "glyph ref to build the binary from (branch, tag or SHA)"
+        type: string
+        default: main
+      dry_run:
+        description: "Preview only — compute the verdict, write nothing"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  handcopy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # glyph walks the tags and the range out of LOCAL git, exactly as it
+          # does for every consumer.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: akira-toriyama/glyph
+          ref: ${{ inputs.glyph_ref }}
+          persist-credentials: false
+          path: glyph
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: glyph/go.mod
+          cache-dependency-path: glyph/go.sum
+
+      - name: Build the candidate binary
+        working-directory: glyph
+        run: |
+          set -euo pipefail
+          go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph
+          "$RUNNER_TEMP/glyph" --version
+
+      - name: Run the hand-copy release step
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          args=(release --json)
+          if [ "$DRY_RUN" = "true" ]; then
+            args=(release --dry-run --json)
+          fi
+          status=0
+          "$RUNNER_TEMP/glyph" "${args[@]}" > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/verdict.err" || status=$?
+          cat "$RUNNER_TEMP/verdict.err" >&2
+          echo "HANDCOPY-PROBE ref=$GITHUB_REF dry_run=$DRY_RUN status=$status"
+          if [ "$status" -eq 1 ]; then
+            echo "::notice::soft no-release — nothing to do."
+            exit 0
+          fi
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          jq -r '"HANDCOPY-PROBE verdict tag=\(.tag) action=\(.action) url=\(.url // "")"' "$RUNNER_TEMP/verdict.json"
