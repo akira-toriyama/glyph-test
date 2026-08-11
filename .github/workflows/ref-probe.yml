@@ -1,0 +1,43 @@
+name: ref-probe
+
+# Drill (glyph t-h4dg): does `github.event.repository.default_branch` — the
+# expression lint.yml's push arm already compares against — survive a
+# `workflow_dispatch`, and specifically a dispatch from a NON-default ref?
+#
+# glyph's release.yml is about to refuse a release run whose ref is not the
+# default branch, and to fail CLOSED when it cannot read that boundary. A
+# fail-closed guard is only as good as the fact it closes on: if the expression
+# is empty on a dispatch payload, that guard would refuse every manual run in
+# the fleet instead of the mis-triggered ones. lint.yml's evidence does not
+# carry over — it reads the expression on a `push` payload only.
+#
+# Dispatch-only and read-only: the job records what the event carried and
+# exits. Run it twice — `--ref main` and `--ref <any branch>` — because the
+# question is about the second one and only the pair distinguishes "empty on
+# dispatch" from "empty off the default branch".
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: record the ref boundary this event carries
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+          echo "REF-PROBE event=$EVENT ref=$REF default_branch=[${DEFAULT_BRANCH:-}] repository.name=[${REPO_NAME:-}]"
+          if [ -z "${DEFAULT_BRANCH:-}" ]; then
+            echo "REF-PROBE verdict: EMPTY — a dispatch payload does not carry default_branch, so the guard needs another source"
+          else
+            echo "REF-PROBE verdict: POPULATED — the guard can compare $REF against refs/heads/$DEFAULT_BRANCH"
+          fi
