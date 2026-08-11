@@ -42,8 +42,11 @@ jobs:
   # cannot drift. Passing it anyway would reintroduce the hand-bumped default
   # this repo has already been bitten by.
   release:
-    uses: akira-toriyama/glyph/.github/workflows/release.yml@v1.0.0
+    uses: akira-toriyama/glyph/.github/workflows/release.yml@fix/release-ref-guard
     with:
+      # A branch pin has no release binary to derive, so the override is
+      # mandatory here (and only here — main's caller pins a tag).
+      glyph-version: v1.0.0
       # No `app`, no `binary` — the verdict-only mode.
       dry-run: ${{ github.event.inputs.dry_run == 'true' }}
       install-notes: |
