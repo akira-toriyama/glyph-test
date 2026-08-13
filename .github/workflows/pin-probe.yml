@@ -38,9 +38,9 @@ jobs:
     steps:
       # No checkout: this step needs nothing from the repo, and not taking a
       # checkout token is cheaper than remembering to drop it.
-      - uses: akira-toriyama/glyph/.github/actions/install@v1.0.0
+      - uses: akira-toriyama/glyph/.github/actions/install@v2.0.0
         with:
-          version: v1.0.0
+          version: v2.0.0
           token: ${{ github.token }}
 
       - name: Report which glyph this repo's second pin site installs
