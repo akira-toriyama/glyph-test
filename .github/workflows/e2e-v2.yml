@@ -34,6 +34,7 @@ jobs:
       - name: e2e
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -u
           BIN=/tmp/glyph
@@ -70,7 +71,12 @@ jobs:
           [ -n "$url1" ] && [ "$url1" != "null" ] || fail "release reported no draft URL"
 
           "$BIN" release --json >/tmp/rel2.json 2>/tmp/rel2.err || fail "release rerun went red: $(cat /tmp/rel2.err)"
-          [ "$(jq -r .url /tmp/rel2.json)" = "$url1" ] || fail "rerun moved the draft: $(jq -r .url /tmp/rel2.json) vs $url1"
           [ "$(jq -r .action /tmp/rel2.json)" = "update" ] || fail "rerun action '$(jq -r .action /tmp/rel2.json)', want update"
+          # Idempotence is "never a second draft" — asserted on the API, not on
+          # the draft URL: GitHub mints a fresh untagged- slug on every PATCH,
+          # so URL equality is not evidence of anything.
+          drafts=$(gh api repos/akira-toriyama/glyph-test/releases --jq '[.[] | select(.draft)] | length')
+          [ "$drafts" = "1" ] || fail "expected exactly one draft after the rerun, found $drafts"
+          [ "$(gh api repos/akira-toriyama/glyph-test/releases --jq '[.[] | select(.draft)][0].tag_name')" = "v0.3.0" ] || fail "the one draft does not carry v0.3.0"
 
           echo "e2e: init/lint/bump/notes/release all answered the v2 contract; draft: $url1"
