@@ -1,0 +1,76 @@
+# e2e-v2 — the live-fire walk of the v2 engine (glyph t-dz5c): build glyph
+# from main, then drive init → lint → bump → notes → release against THIS
+# repository over the real API. Exit codes are asserted exactly — they are
+# the machine contract the fleet branches on.
+name: e2e-v2
+on:
+  workflow_dispatch:
+    inputs:
+      glyph-ref:
+        description: git ref of akira-toriyama/glyph to build and judge
+        type: string
+        default: main
+permissions:
+  contents: write # the release draft upsert
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # the walk needs full history
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+      - name: build glyph from the ref under test
+        run: |
+          git clone -q --depth 1 -b "${GLYPH_REF}" https://github.com/akira-toriyama/glyph /tmp/glyph-src
+          (cd /tmp/glyph-src && go build -o /tmp/glyph ./cmd/glyph)
+          /tmp/glyph version
+        env:
+          GLYPH_REF: ${{ inputs.glyph-ref }}
+      - name: e2e
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -u
+          BIN=/tmp/glyph
+          fail() { echo "::error::e2e: $1"; exit 1; }
+
+          # init refuses to clobber the committed config (usage, 2)
+          rc=0; "$BIN" init --gemoji >/dev/null 2>&1 || rc=$?
+          [ "$rc" -eq 2 ] || fail "init over existing glyph.toml exited $rc, want 2"
+
+          # lint: the sigil range is clean; a shapeless message violates (3)
+          "$BIN" lint --range v0.2.2..HEAD || fail "lint over the sigil range went red"
+          rc=0; "$BIN" lint --message 'no shape at all' >/dev/null 2>&1 || rc=$?
+          [ "$rc" -eq 3 ] || fail "lint of a shapeless message exited $rc, want 3"
+
+          # bump: the walk folds the ^ commit to minor
+          next=$("$BIN" bump --since-tag=v0.2.2) || fail "bump --since-tag went red"
+          [ "$next" = "v0.3.0" ] || fail "bump answered '$next', want v0.3.0"
+
+          # notes: sections in config order, lines through the template
+          notes=$("$BIN" notes --since-tag=v0.2.2) || fail "notes --since-tag went red"
+          echo "$notes" | grep -q '^## Features' || fail "notes carry no Features section"
+          echo "$notes" | grep -q 'add the demo feature' || fail "notes lost the feature line"
+          echo "$notes" | grep -q '^## Fixes' || fail "notes carry no Fixes section"
+
+          # release: dry run previews, the real run upserts the ONE draft,
+          # and a rerun converges on the same release id (idempotent)
+          "$BIN" release --dry-run >/tmp/dry.out 2>/tmp/dry.err || fail "release --dry-run went red: $(cat /tmp/dry.err)"
+          head -1 /tmp/dry.out | grep -q '^v0.3.0$' || fail "dry run previews '$(head -1 /tmp/dry.out)', want v0.3.0"
+
+          "$BIN" release --json >/tmp/rel1.json 2>/tmp/rel1.err || fail "release went red: $(cat /tmp/rel1.err)"
+          url1=$(jq -r .url /tmp/rel1.json)
+          tag1=$(jq -r .tag /tmp/rel1.json)
+          [ "$tag1" = "v0.3.0" ] || fail "release tagged '$tag1', want v0.3.0"
+          [ -n "$url1" ] && [ "$url1" != "null" ] || fail "release reported no draft URL"
+
+          "$BIN" release --json >/tmp/rel2.json 2>/tmp/rel2.err || fail "release rerun went red: $(cat /tmp/rel2.err)"
+          [ "$(jq -r .url /tmp/rel2.json)" = "$url1" ] || fail "rerun moved the draft: $(jq -r .url /tmp/rel2.json) vs $url1"
+          [ "$(jq -r .action /tmp/rel2.json)" = "update" ] || fail "rerun action '$(jq -r .action /tmp/rel2.json)', want update"
+
+          echo "e2e: init/lint/bump/notes/release all answered the v2 contract; draft: $url1"
