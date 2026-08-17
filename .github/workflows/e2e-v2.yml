@@ -1,88 +1,1494 @@
-# e2e-v2 — the live-fire walk of the v2 engine (glyph t-dz5c): build glyph
-# from main, then drive init → lint → bump → notes → release against THIS
-# repository over the real API. Exit codes are asserted exactly — they are
-# the machine contract the fleet branches on.
+# The v2/v3 engine, fired with live ammunition, in tiers that each own one
+# question — and each say out loud what would have to break for them to go red.
+#
+# What replaced what, and why. The file this supersedes drove init → lint →
+# bump → notes → release in ONE step against a checkout of live `main`, and
+# three of its four kinds of assertion could not fail for the reason they named:
+#
+#   * `bump --since-tag=v0.2.2 == v0.3.0` was asked at a MOVING head. The
+#     expectation was never wrong — the same command at a checkout detached at
+#     tag v0.3.0 still answers exactly v0.3.0 — but soak commits moved live
+#     main's answer to v1.0.0, so the arm reported a defect in glyph for a
+#     change in the sandbox. Tier `walk` asks it at the frozen coordinate.
+#   * the notes assertions were three independent `grep -q '^## X'` calls, so
+#     section ORDER — the thing `note.sections` exists to decide — was never
+#     checked, plus `grep -q 'add the demo feature'`, which matches the
+#     templated line AND the raw fallback line and therefore cannot tell the
+#     template working from the template being ignored.
+#   * `go build ./cmd/glyph` leaves the version unstamped, so the `version`
+#     line it printed identified nothing. `sh build.sh` stamps it, and tier
+#     `build` refuses to continue unless the binary names the ref that was
+#     asked for. A drill that fired the wrong binary has already happened here.
+#   * every `gh api` call hardcoded `akira-toriyama/glyph-test`, so a fork or a
+#     rename would have judged this repository from somewhere else.
+#
+# The rule the whole file is built on, stated once. An exit code is never an
+# assertion on its own. `3` is a convention violation AND a glyph.toml that
+# failed to load (measured: a `skip = true` + `semver_sigil` contradiction
+# exits 3 with a message naming the file), and `4` is any of three unrelated
+# refusals. Worse, stderr carries `::notice::`/`::warning::` annotations
+# alongside the JSON error envelope, so a clause matched "somewhere on stderr"
+# proves nothing about what glyph actually refused — measured 2026-08-17, a
+# `--dry-run` refused by the published floor exits 4 while the ref guard's
+# dry-run exemption notice sits on the same stream. That is livefire.yml's
+# documented false green (run 30734646022) reproduced in a new arm. So every
+# refusal here is `rc -eq N` AND a clause read out of `.error.message` through
+# the envelope sieve, and the canaries in `assert.sh` prove the helpers still
+# reject the shape that fooled the last one.
+#
+# Fired more than one way, which is the point (fleet-change-policy.md, "Stage 2
+# means both halves"). All three rungs below were measured on 2026-08-17 by
+# running these step scripts against binaries built at each ref:
+#
+#   glyph-ref: main         -> `grammar` (12 arms, 67 assertions), `walk`,
+#                              `refusals` and `drafts` are GREEN.
+#                              `distribution` is RED until this repository's
+#                              pins move — its header says why, and the
+#                              redness is the finding, not a bug in the job.
+#   glyph-ref: v3.0.0-rc.3  -> the release this repository is currently PINNED
+#                              at, and the sharp control: `grammar` reds on
+#                              exactly four arms — (c), (e), (j), (k) — the
+#                              four whose expected note lines depend on the
+#                              optional span in `note.line`. The other eight
+#                              stay green. A control that reds everything
+#                              tells you a binary changed; this one tells you
+#                              WHAT changed.
+#   glyph-ref: v2.0.0       -> every arm reds, at the fixture step: `init
+#                              --gemoji` does not exist before v3, so nothing
+#                              downstream ever runs. Coarse, and still the
+#                              answer to "has this tier ever been shown to
+#                              reject the previous major".
 name: e2e-v2
+
+# The REST run object carries no inputs and the display title is "e2e-v2" for
+# every dispatch, so which binary a run judged is otherwise unrecoverable once
+# Actions retention deletes the logs. A label, not a second home for the fact —
+# the binary's own `--version` is still what `build` asserts against.
+run-name: e2e-v2 — glyph-ref=${{ inputs.glyph-ref }}
+
 on:
   workflow_dispatch:
     inputs:
       glyph-ref:
-        description: git ref of akira-toriyama/glyph to build and judge
+        description: "glyph ref to build the binary from (branch, tag or SHA)"
         type: string
         default: main
+
 permissions:
-  contents: write # the release draft upsert
+  contents: read
+
 jobs:
-  e2e:
+  # ── tier 0 ────────────────────────────────────────────────────────────────
+  # Goes red if: the named ref does not build, or the built binary does not
+  # name the checkout's HEAD. Everything downstream runs ONE binary, taken from
+  # this job's artifact, and re-asserts its `--version` against this job's
+  # output — so an artifact mix-up cannot silently hand a later tier something
+  # else.
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # the walk needs full history
+          repository: akira-toriyama/glyph
+          ref: ${{ inputs.glyph-ref }}
+          # build.sh stamps the version with `git describe --tags`, which needs
+          # the tags and the history behind them.
+          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-go@v6
+          path: glyph
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: stable
+          go-version-file: glyph/go.mod
+          # The build below compiles whatever ref the dispatcher named, and a
+          # dispatch runs in the DEFAULT BRANCH's cache scope — so a populated
+          # module cache here is written by one ref and read by every later run
+          # of every workflow in this repository. CodeQL flagged exactly that
+          # (run 32032336673, "Cache Poisoning via execution of untrusted
+          # code"); the file this replaced carried `cache: false` and the
+          # rebuild lost it. A cold module download costs seconds and this job
+          # runs on demand.
           cache: false
-      - name: build glyph from the ref under test
-        run: |
-          git clone -q --depth 1 -b "${GLYPH_REF}" https://github.com/akira-toriyama/glyph /tmp/glyph-src
-          (cd /tmp/glyph-src && go build -o /tmp/glyph ./cmd/glyph)
-          /tmp/glyph version
+
+      # `sh build.sh`, NOT `go build ./cmd/glyph`: build.sh is what stamps the
+      # version, and an unstamped binary makes every identity claim below —
+      # and the artifact round-trip assertion in four other jobs — vacuous.
+      - name: Build glyph from source
+        run: sh build.sh
+        working-directory: glyph
+
+      - name: Assert the binary is the ref that was asked for
+        id: identity
+        working-directory: glyph
         env:
+          # Through the environment, never interpolated into the script: a
+          # workflow_dispatch input is attacker-controlled text as far as
+          # zizmor's template-injection rule is concerned, and it is right.
           GLYPH_REF: ${{ inputs.glyph-ref }}
-      - name: e2e
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -u
-          BIN=/tmp/glyph
-          fail() { echo "::error::e2e: $1"; exit 1; }
+          set -euo pipefail
+          # NOT `go version -m … vcs.revision`: build.sh builds with -trimpath,
+          # which suppresses VCS stamping outright, so that field is empty for
+          # every ref and the check would pass by being blank on both sides.
+          want="$(git rev-parse --short HEAD)"
+          got="$(bin/glyph --version)"
+          echo "ref=$GLYPH_REF  checkout=$want  binary=$got"
+          case "$got" in
+            *"($want,"*) ;;
+            *) echo "::error::the binary does not name $want — it was built from some other tree"; exit 1 ;;
+          esac
+          echo "version=$got" >> "$GITHUB_OUTPUT"
+          # There is deliberately no marker-string half here (livefire.yml
+          # greps the binary for two mutually exclusive strings). This file's
+          # negative controls are DISPATCHES at older refs — see the header for
+          # what each one reds, measured — not a grep that goes stale the
+          # moment the string it hunts is reworded.
 
-          # init refuses to clobber the committed config (usage, 2)
-          rc=0; "$BIN" init --gemoji >/dev/null 2>&1 || rc=$?
-          [ "$rc" -eq 2 ] || fail "init over existing glyph.toml exited $rc, want 2"
+      - name: Stage the kit every other tier runs
+        run: |
+          set -euo pipefail
+          mkdir -p kit
+          cp glyph/bin/glyph kit/glyph
+          cat > kit/assert.sh <<'SH'
+          # One home for what an assertion means in this file, shipped in the
+          # build artifact so a fix here cannot land in five jobs at four
+          # different vintages.
+          #
+          # Two shapes are load-bearing and neither is style:
+          #
+          #   * `|| RC=$?`, never a bare call. A `run:` block is `bash -e`, and
+          #     a non-zero exit is the NORMAL path for most arms in this file —
+          #     a bare call kills the step before the assertion it exists for.
+          #   * a claim about a REFUSAL is read out of `.error.message` through
+          #     `envelope`, never off the raw stream. Measured 2026-08-17: a
+          #     dry run refused by the published floor exits 4 while stderr also
+          #     carries the ref guard's dry-run notice, so `rc == 4` plus the
+          #     clause anywhere on stderr is satisfied by a run where the ref
+          #     guard never fired. `assert_matches` is the one helper that does
+          #     read the raw stream, and it is for NOTICES and WARNINGS only —
+          #     glyph has no other channel for those.
+          #
+          # Every helper below is exercised twice by `assert_canaries`: once on
+          # a fixture it must accept, once on a fixture it must reject. A helper
+          # shown only to accept could be `return 0`; one shown only to reject
+          # could be `return 1`.
 
-          # lint: the sigil range is clean; a shapeless message violates (3)
-          "$BIN" lint --range v0.2.2..HEAD || fail "lint over the sigil range went red"
-          rc=0; "$BIN" lint --message 'no shape at all' >/dev/null 2>&1 || rc=$?
-          [ "$rc" -eq 3 ] || fail "lint of a shapeless message exited $rc, want 3"
+          RC=0
 
-          # bump: the walk folds the ^ commit to minor
-          next=$("$BIN" bump --since-tag=v0.2.2) || fail "bump --since-tag went red"
-          [ "$next" = "v0.3.0" ] || fail "bump answered '$next', want v0.3.0"
+          run_glyph() {                     # run_glyph <out> <err> <args…>
+            # GLYPH_ENV, when set, is a single NAME=VALUE this arm needs in
+            # glyph's environment and nowhere else. A step-level `env:` cannot
+            # say "for this one process", and the ref-guard arms need exactly
+            # that: the surrounding steps must keep the runner's real ref.
+            local out="$1" err="$2"; shift 2
+            RC=0
+            if [ -n "${GLYPH_ENV:-}" ]; then
+              env "$GLYPH_ENV" "$GLYPH" "$@" > "$out" 2> "$err" || RC=$?
+            else
+              "$GLYPH" "$@" > "$out" 2> "$err" || RC=$?
+            fi
+            echo "+ ${GLYPH_ENV:-} glyph $* -> exit $RC"
+          }
 
-          # notes: sections in config order, lines through the template
-          notes=$("$BIN" notes --since-tag=v0.2.2) || fail "notes --since-tag went red"
-          echo "$notes" | grep -q '^## Features' || fail "notes carry no Features section"
-          echo "$notes" | grep -q 'add the demo feature' || fail "notes lost the feature line"
-          echo "$notes" | grep -q '^## Fixes' || fail "notes carry no Fixes section"
+          # The house sieve. stderr carries annotations before the JSON, and jq
+          # must never see them.
+          envelope() { sed -n '/^[{]/,$p' "$1"; }
 
-          # release: dry run previews, the real run upserts the ONE draft,
-          # and a rerun converges on the same release id (idempotent)
-          "$BIN" release --dry-run >/tmp/dry.out 2>/tmp/dry.err || fail "release --dry-run went red: $(cat /tmp/dry.err)"
-          head -1 /tmp/dry.out | grep -q '^v0.3.0$' || fail "dry run previews '$(head -1 /tmp/dry.out)', want v0.3.0"
+          err_field() { envelope "$1" | jq -r "$2 // \"\"" 2>/dev/null; }
 
-          "$BIN" release --json >/tmp/rel1.json 2>/tmp/rel1.err || fail "release went red: $(cat /tmp/rel1.err)"
-          url1=$(jq -r .url /tmp/rel1.json)
-          tag1=$(jq -r .tag /tmp/rel1.json)
-          [ "$tag1" = "v0.3.0" ] || fail "release tagged '$tag1', want v0.3.0"
-          # Spelled as an if, not `A && B || fail`: shellcheck reads that shape
-          # as a would-be if-then-else and is right to (SC2015) — the C arm runs
-          # when A is false as well, which here is intended and therefore
-          # indistinguishable, to a reader, from the bug the warning is about.
-          if [ -z "$url1" ] || [ "$url1" = "null" ]; then
-            fail "release reported no draft URL"
+          assert_rc() {                     # assert_rc <arm> <want>  (reads $RC)
+            local arm="$1" want="$2"
+            if [ "$RC" -ne "$want" ]; then
+              echo "::error::$arm exited $RC, want exactly $want"
+              return 1
+            fi
+            echo "  ok  $arm exit=$want"
+          }
+
+          assert_empty_stdout() {           # assert_empty_stdout <arm> <out>
+            local arm="$1" out="$2" n
+            n=$(wc -c < "$out" | tr -d ' ')
+            if [ "$n" -ne 0 ]; then
+              echo "::error::$arm printed $n byte(s) on stdout — a refusal must print nothing a caller could parse as a verdict"
+              sed -n '1,20p' "$out"
+              return 1
+            fi
+            echo "  ok  $arm stdout is empty"
+          }
+
+          assert_envelope() {               # assert_envelope <arm> <err> <code>
+            local arm="$1" err="$2" want="$3" got
+            if ! envelope "$err" | jq -e . > /dev/null 2>&1; then
+              echo "::error::$arm printed no JSON error envelope — glyph did not refuse, something else did"
+              sed -n '1,40p' "$err"
+              return 1
+            fi
+            got=$(err_field "$err" '.error.code')
+            if [ "$got" != "$want" ]; then
+              echo "::error::$arm envelope code is '$got', want $want"
+              return 1
+            fi
+            echo "  ok  $arm envelope code=$want"
+          }
+
+          assert_says() {                   # assert_says <arm> <err> <substring>
+            local arm="$1" err="$2" want="$3" msg
+            msg=$(err_field "$err" '.error.message')
+            case "$msg" in
+              *"$want"*) echo "  ok  $arm .error.message carries '$want'" ;;
+              *) echo "::error::$arm was refused by something other than the mechanism it names — wanted '$want', .error.message is: $msg"; return 1 ;;
+            esac
+          }
+
+          assert_lacks() {                  # assert_lacks <arm> <err> <substring>
+            local arm="$1" err="$2" nope="$3" msg
+            msg=$(err_field "$err" '.error.message')
+            case "$msg" in
+              *"$nope"*) echo "::error::$arm's refusal carries '$nope', so it is not the refusal this arm names: $msg"; return 1 ;;
+              *) echo "  ok  $arm .error.message does not carry '$nope'" ;;
+            esac
+          }
+
+          assert_jq() {                     # assert_jq <arm> <err> <filter>
+            local arm="$1" err="$2" filter="$3"
+            if envelope "$err" | jq -e "$filter" > /dev/null 2>&1; then
+              echo "  ok  $arm envelope satisfies [$filter]"
+            else
+              echo "::error::$arm envelope fails [$filter]:"
+              envelope "$err"
+              return 1
+            fi
+          }
+
+          assert_line() {                   # assert_line <arm> <file> <exact line>
+            local arm="$1" f="$2" line="$3"
+            # -x, full-line anchored: the arm this file replaced matched
+            # 'add the demo feature' as a substring, which the templated line
+            # and the raw fallback line both satisfy.
+            if grep -qxF -- "$line" "$f"; then
+              echo "  ok  $arm carries the exact line: $line"
+            else
+              echo "::error::$arm: no line is exactly [$line]"
+              sed -n '1,60p' "$f"
+              return 1
+            fi
+          }
+
+          assert_absent() {                 # assert_absent <arm> <file> <substring>
+            # Spelled as an `if`, not `! grep -q`: a negated pipeline under
+            # `set -e` is a shape people simplify away by accident, and the
+            # failure has to be able to print the offending line.
+            local arm="$1" f="$2" pat="$3"
+            if grep -qF -- "$pat" "$f"; then
+              echo "::error::$arm: [$pat] appears where it must not:"
+              grep -nF -- "$pat" "$f"
+              return 1
+            fi
+            echo "  ok  $arm carries no [$pat]"
+          }
+
+          assert_no_line_matching() {       # assert_no_line_matching <arm> <file> <ere>
+            local arm="$1" f="$2" re="$3"
+            if grep -nE -- "$re" "$f"; then
+              echo "::error::$arm: the lines above match /$re/, which must match nothing here"
+              return 1
+            fi
+            echo "  ok  $arm has no line matching /$re/"
+          }
+
+          assert_matches() {                # assert_matches <arm> <file> <ere>
+            # NOTICES AND WARNINGS ONLY. Never reach for this to establish what
+            # glyph refused — that is what assert_says is for, and the reason
+            # the two are separate functions rather than one with a flag.
+            local arm="$1" f="$2" re="$3"
+            if grep -qE -- "$re" "$f"; then
+              echo "  ok  $arm stream matches /$re/"
+            else
+              echo "::error::$arm: nothing on the stream matches /$re/"
+              sed -n '1,40p' "$f"
+              return 1
+            fi
+          }
+
+          assert_eq() {                     # assert_eq <arm> <got> <want>
+            local arm="$1" got="$2" want="$3"
+            if [ "$got" != "$want" ]; then
+              echo "::error::$arm answered [$got], want [$want]"
+              return 1
+            fi
+            echo "  ok  $arm = $want"
+          }
+
+          canary() {                        # canary <name> <assertion…>
+            local name="$1"; shift
+            # Both streams silenced: the helpers report by printing `::error::`
+            # on STDOUT, so silencing stderr alone leaves every GREEN run
+            # carrying a red annotation for a rejection that was the point. An
+            # error annotation on a passing step is how a repository teaches
+            # people to stop reading annotations.
+            if "$@" > /dev/null 2>&1; then
+              echo "::error::canary $name: the assertion ACCEPTED the shape it exists to reject"
+              return 1
+            fi
+            echo "  canary ok  $name is still rejected"
+          }
+
+          assert_canaries() {
+            local t saved
+            t="$(mktemp -d)"
+            saved="$RC"
+
+            # THE measured false green, byte for byte. `grep` over the raw
+            # stream finds the ref-guard clause; `.error.message` does not, and
+            # only the second answer is true about what glyph refused.
+            {
+              printf '%s\n' '::notice::glyph: dry run from refs/heads/e2e-probe: nothing is written, so the ref this release would write from was not judged'
+              printf '%s\n' '{"error":{"code":4,"message":"computed version v1.0.0 is not greater than the latest published release v1.0.0 — refusing the draft"}}'
+            } > "$t/false-green.err"
+            grep -qF 'nothing is written, so the ref' "$t/false-green.err" || {
+              echo "::error::canary fixture lost its bait — the raw stream no longer carries the clause, so the canary proves nothing"
+              return 1
+            }
+            assert_says fg-accept "$t/false-green.err" 'is not greater than the latest published release' || return 1
+            canary "ref-clause-read-off-the-raw-stream" \
+              assert_says fg-reject "$t/false-green.err" 'nothing is written, so the ref' || return 1
+
+            # A glyph.toml that failed to load exits 3 with a message naming the
+            # file — the same integer a convention violation returns.
+            printf '%s\n' '{"error":{"code":3,"message":"/w/glyph.toml: patterns[4]: skip = true and semver_sigil = \"~\" contradict"}}' > "$t/broken-config.err"
+            assert_envelope bc-accept "$t/broken-config.err" 3 || return 1
+            canary "a-broken-config-passing-as-a-convention-violation" \
+              assert_lacks bc-reject "$t/broken-config.err" 'glyph.toml:' || return 1
+            canary "envelope-code-mismatch" \
+              assert_envelope bc-reject "$t/broken-config.err" 4 || return 1
+
+            printf '%s\n' '::error::glyph: something went wrong' > "$t/no-envelope.err"
+            canary "an-exit-with-no-json-envelope" \
+              assert_envelope ne-reject "$t/no-envelope.err" 3 || return 1
+
+            RC=3
+            assert_rc rc-accept 3 || { RC="$saved"; return 1; }
+            canary "the-wrong-exit-code" assert_rc rc-reject 4 || { RC="$saved"; return 1; }
+            RC="$saved"
+
+            printf 'a verdict\n' > "$t/nonempty.out"
+            : > "$t/empty.out"
+            assert_empty_stdout es-accept "$t/empty.out" || return 1
+            canary "a-refusal-that-still-printed-a-verdict" \
+              assert_empty_stdout es-reject "$t/nonempty.out" || return 1
+
+            {
+              printf '%s\n' '- add the demo feature `@tester` and then some more'
+              printf '%s\n' 'fixup! :bug:(demo)~ fix the demo crash'
+              printf '%s\n' '- :sparkles:(demo)^ raw gitmoji, no template'
+            } > "$t/lines.txt"
+            assert_line al-accept "$t/lines.txt" '- add the demo feature `@tester` and then some more' || return 1
+            canary "a-substring-match-passing-as-a-line" \
+              assert_line al-reject "$t/lines.txt" '- add the demo feature `@tester`' || return 1
+            assert_absent aa-accept "$t/lines.txt" 'squash!' || return 1
+            canary "a-string-that-is-present" \
+              assert_absent aa-reject "$t/lines.txt" 'fixup!' || return 1
+            assert_no_line_matching nl-accept "$t/lines.txt" '^## ' || return 1
+            canary "a-line-that-matches" \
+              assert_no_line_matching nl-reject "$t/lines.txt" '^- :' || return 1
+            assert_matches am-accept "$t/lines.txt" '^fixup! ' || return 1
+            canary "a-pattern-that-matches-nothing" \
+              assert_matches am-reject "$t/lines.txt" '^## Features$' || return 1
+
+            printf '%s\n' '{"error":{"code":3,"message":"x","details":[{"sha":"a"},{"sha":"b"}]}}' > "$t/details.err"
+            assert_jq aj-accept "$t/details.err" '.error.details|length==2' || return 1
+            canary "a-details-key-that-is-there" \
+              assert_jq aj-reject "$t/details.err" '.error|has("details")|not' || return 1
+
+            assert_eq ae-accept x x || return 1
+            canary "two-things-that-differ" assert_eq ae-reject x y || return 1
+
+            rm -rf "$t"
+            echo "canaries: every helper accepted its control and rejected its bait"
+          }
+          SH
+          chmod +x kit/glyph
+          ls -l kit
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-kit
+          path: kit
+          retention-days: 5
+          if-no-files-found: error
+
+  # ── tier 1 ────────────────────────────────────────────────────────────────
+  # Every byte-exact literal, in a fixture this job builds from nothing, with
+  # no credential anywhere.
+  #
+  # Goes red if: the 0.x clamp stops clamping, `%` stops promoting or starts
+  # depending on commit order, a `skip = true` pattern stops being total across
+  # lint/bump/notes, `exclude_authors` leaks into notes or stops holding lint
+  # and bump, an unmatched commit stops being a refusal, section order drifts,
+  # the note template stops being applied (or starts being applied to a commit
+  # no pattern matched), a revert renders as the change it undoes, or any of
+  # the three usage exits stops being 2.
+  #
+  # Every expected string below is a transcription of output measured against
+  # this exact fixture with the candidate binary — not a prediction.
+  #
+  # One dependency a reader would not guess: the fixture's config comes from
+  # `glyph init --gemoji` at the ref under test, so the note lines below assume
+  # the preset carries the optional span `$[ ($pr)] `. Under `--range` every
+  # commit's `$pr` is empty, so a preset that still writes a bare ` ($pr)`
+  # renders ` () ` and arms (c), (e), (j) and (k) go red. That is the fix
+  # landing, not a fixture bug.
+  grammar:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    env:
+      GLYPH: ${{ github.workspace }}/kit/glyph
+      ASSERT: ${{ github.workspace }}/kit/assert.sh
+      WANT_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: e2e-kit
+          path: kit
+
+      - name: Take delivery of the kit, and prove it is the binary build judged
+        run: |
+          set -euo pipefail
+          # upload-artifact zips without preserving the executable bit, so the
+          # download arrives non-executable on every job in this file.
+          chmod +x "$GLYPH"
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          assert_eq artifact-identity "$("$GLYPH" --version)" "$WANT_VERSION"
+          assert_canaries
+
+      - name: Assert this tier holds no credential
+        run: |
+          set -euo pipefail
+          # `permissions: {}` above is the structural half. This is the half a
+          # reader can check: GitHub does not put GITHUB_TOKEN in the process
+          # environment on its own, so a token here could only arrive from an
+          # `env:` someone added. What this does NOT prove, and must not be
+          # read as proving: an unauthenticated request to a PUBLIC repository
+          # still succeeds, so the guarantee is "no credential", not "no
+          # network". The claim this tier makes is that its answers come from
+          # the fixture, and `--range` is the surface that never resolves pulls.
+          for v in GITHUB_TOKEN GH_TOKEN GH_ENTERPRISE_TOKEN; do
+            if [ -n "$(printenv "$v" || true)" ]; then
+              echo "::error::$v is set on a tier that must judge nothing but its own fixture"
+              exit 1
+            fi
+          done
+          echo "no credential on this tier"
+
+      - name: Build the fixture, and assert init's happy path while doing it
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          F="$RUNNER_TEMP/fixture"
+          rm -rf "$F"; mkdir -p "$F"; cd "$F"
+          git init -q -b main
+          git config user.name tester
+          git config user.email tester@example.invalid
+          git config commit.gpgsign false
+          BOT='dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'
+
+          # `init` on an empty directory. Nothing in this repository asserted
+          # init's HAPPY path before — only its refusal to clobber.
+          run_glyph "$RUNNER_TEMP/init.out" "$RUNNER_TEMP/init.err" init --gemoji
+          assert_rc init-happy-path 0
+          test -f glyph.toml
+
+          n=0
+          c() {
+            n=$((n + 1))
+            : > "f$n.txt"
+            git add -A
+            if [ -n "${2:-}" ]; then
+              git commit -q -m "$1" --author="$2"
+            else
+              git commit -q -m "$1"
+            fi
+          }
+
+          git add -A
+          git commit -q -m ':tada:(demo)= start the fixture'
+          git tag v0.4.2
+
+          # (a) the 0.x clamp: ~ then ^ then !
+          git checkout -q -b br-clamp v0.4.2
+          c ':bug:(demo)~ fix the demo crash'
+          c ':sparkles:(demo)^ add the demo feature'
+          c ':boom:(demo)! break the demo API'
+
+          # (b) the promotion sigil, and the same three with % first
+          git checkout -q -b br-promote v0.4.2
+          c ':bug:(demo)~ fix the demo crash'
+          c ':sparkles:(demo)^ add the demo feature'
+          c ':rocket:(demo)% call it 1.0'
+          git checkout -q -b br-promote-first v0.4.2
+          c ':rocket:(demo)% call it 1.0'
+          c ':bug:(demo)~ fix the demo crash'
+          c ':sparkles:(demo)^ add the demo feature'
+
+          # (c) five commits that count, one real merge and one fixup that
+          #     must not. The merge is `--no-ff` with an explicit subject so
+          #     the skip pattern is matched by the real thing rather than by a
+          #     hand-written message that happens to start with "Merge ".
+          git checkout -q -b br-skips v0.4.2
+          c ':bug:(demo)~ fix the demo crash'
+          c ':sparkles:(demo)^ add the demo feature'
+          c ':memo:(demo)= note the demo docs'
+          git checkout -q -b topic
+          c ':wrench:(demo)= tweak the topic'
+          git checkout -q br-skips
+          c ':boom:(demo)! break the demo API'
+          git merge -q --no-ff -m "Merge branch 'topic' into main" topic
+          c 'fixup! :bug:(demo)~ fix the demo crash'
+
+          # (d)(e)(f) the bot: one commit that matches the sigil pattern, so it
+          #     lands in a semver section AND in the author section.
+          git checkout -q -b br-bot v0.4.2
+          c ':bug:(demo)~ fix the demo crash'
+          c ':boom:(deps)! the bot claims a breaking change' "$BOT"
+
+          # (g) two commits no pattern matches, plus one that does
+          git checkout -q -b br-unmatched v0.4.2
+          c ':bug:(demo)~ fix the demo crash'
+          c 'no shape at all'
+          c 'also shapeless'
+
+          # (i)(j)(k) one range that fills all four sections, ending in a bot
+          #     commit no pattern matches — the fallback line.
+          git checkout -q -b br-notes v0.4.2
+          c ':bug:(demo)~ fix the demo crash'
+          c ':sparkles:(demo)^ add the demo feature'
+          c ':boom:(demo)! break the demo API'
+          c 'Revert ":sparkles:(demo)^ add the demo feature"'
+          c 'build(deps): bump golang.org/x/net from 0.1 to 0.2' "$BOT"
+
+          git checkout -q main
+          git log --all --format='%h %an | %s'
+
+      - name: "(a) a 0.x range folds ! to a MINOR step, and the same range at 1.x does not"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          O="$RUNNER_TEMP/a"; run_glyph "$O.json" "$O.err" bump --range v0.4.2..br-clamp --json
+          assert_rc a-clamp 0
+          # Both halves, or it proves nothing. `v0.5.0` alone is what a `^`
+          # range gives too, and `level == major` alone is what 1.x gives too —
+          # the clamp is exactly the conjunction of the two.
+          assert_eq a-clamp-next  "$(jq -r .next  "$O.json")" v0.5.0
+          assert_eq a-clamp-level "$(jq -r .level "$O.json")" major
+          assert_eq a-clamp-reason "$(jq -r '.reason|split(" ")|.[-2:]|join(" ")' "$O.json")" '→ major'
+          O="$RUNNER_TEMP/a1"; run_glyph "$O.json" "$O.err" bump --range v0.4.2..br-clamp --current 1.4.2
+          assert_rc a-stable 0
+          assert_eq a-stable-next "$(cat "$O.json")" v2.0.0
+
+      - name: "(b) % lands on 1.0.0 from 0.x, behaves as ! from 1.x, and does not depend on commit order"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          O="$RUNNER_TEMP/b0"; run_glyph "$O.json" "$O.err" bump --range v0.4.2..br-promote --current 0.4.2 --json
+          assert_rc b-from-0x 0
+          assert_eq b-from-0x-next "$(jq -r .next "$O.json")" v1.0.0
+          assert_eq b-from-0x-reason "$(jq -r '.reason|split(" ")|.[-2:]|join(" ")' "$O.json")" '→ promote'
+          # The 1.x rung. This is the one that protects every already-stable
+          # repo in the fleet, and the one a single-arm test omits.
+          O="$RUNNER_TEMP/b1"; run_glyph "$O.json" "$O.err" bump --range v0.4.2..br-promote --current 1.4.2 --json
+          assert_rc b-from-1x 0
+          assert_eq b-from-1x-next "$(jq -r .next "$O.json")" v2.0.0
+          assert_eq b-from-1x-reason "$(jq -r '.reason|split(" ")|.[-2:]|join(" ")' "$O.json")" '→ promote'
+          O="$RUNNER_TEMP/b2"; run_glyph "$O.json" "$O.err" bump --range v0.4.2..br-promote-first --current 0.4.2
+          assert_rc b-order 0
+          assert_eq b-order-next "$(cat "$O.json")" v1.0.0
+
+      - name: "(c) a skipped commit is skipped on all THREE surfaces, over one range"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          O="$RUNNER_TEMP/c0"; run_glyph "$O.out" "$O.err" lint --range v0.4.2..br-skips
+          assert_rc c-lint 0
+          O="$RUNNER_TEMP/c1"; run_glyph "$O.json" "$O.err" bump --range v0.4.2..br-skips --json
+          assert_rc c-bump 0
+          assert_eq c-bump-count "$(jq -r '.commits|length' "$O.json")" 5
+          jq -r '.commits[].subject' "$O.json" > "$O.subjects"
+          assert_absent c-bump-merge "$O.subjects" "Merge branch 'topic' into main"
+          assert_absent c-bump-fixup "$O.subjects" 'fixup!'
+          O="$RUNNER_TEMP/c2"; run_glyph "$O.md" "$O.err" notes --range v0.4.2..br-skips
+          assert_rc c-notes 0
+          assert_absent c-notes-fixup "$O.md" 'fixup!'
+          # The positive control. Without it, an empty document satisfies the
+          # absence above and the arm cannot fail for the reason it names.
+          # shellcheck disable=SC2016
+          assert_line c-notes-control "$O.md" '- fix the demo crash `@tester`'
+
+      - name: "(d) exclude_authors holds the version fold — as a counterfactual, at 1.x"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          # Guard the premise first: if the fixture's author did not stick, the
+          # assertion below is about something else entirely.
+          assert_eq d-premise "$(git log -1 --format=%an br-bot)" 'dependabot[bot]'
+          # At --current 1.4.2 and not 0.4.2: while the base is 0.x the clamp
+          # folds `!` to a minor step, so "the bot's ! was ignored" and "the
+          # bot's ! was honoured" can answer the same string. At 1.x they
+          # cannot — v1.4.3 is reachable only if the bot's commit was dropped.
+          O="$RUNNER_TEMP/d"; run_glyph "$O.json" "$O.err" bump --range v0.4.2..br-bot --current 1.4.2 --json
+          assert_rc d-bump 0
+          assert_eq d-next  "$(jq -r .next "$O.json")" v1.4.3
+          assert_eq d-count "$(jq -r '.commits|length' "$O.json")" 1
+
+      - name: "(e) exclude_authors is NOT consulted by notes, and sections do not dedup"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          O="$RUNNER_TEMP/e"; run_glyph "$O.md" "$O.err" notes --range v0.4.2..br-bot
+          assert_rc e-notes 0
+          # Twice: once under Breaking Changes (the semver axis), once under
+          # Dependencies (the author axis). A commit may appear in several
+          # sections, and that is the ratified behaviour, not a bug.
+          #
+          # Note where the mention fence closes: `@dependabot` is fenced,
+          # `\[bot]` is outside it and backslash-escaped. A grep written as
+          # '@dependabot\[bot\]' FAILS against correct output — the fence is
+          # the ratified defence against a release body pinging a stranger, so
+          # an assertion that expects a bare @name would encode a regression.
+          # shellcheck disable=SC2016
+          assert_eq e-count "$(grep -cxF -- '- the bot claims a breaking change `@dependabot`\[bot]' "$O.md")" 2
+
+      - name: "(f) judged-nothing is reported, and says WHICH nothing"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          O="$RUNNER_TEMP/f"; run_glyph "$O.out" "$O.err" lint --range br-bot~1..br-bot
+          assert_rc f-lint 0
+          # Exit 0 alone is vacuous: an EMPTY range also exits 0. The two cases
+          # are distinguishable only by the sentence, and the second assertion
+          # is what stops "the range was empty" passing as "the range was all
+          # bot". Read off the raw stream on purpose — this is a warning, and
+          # glyph has no other channel for one.
+          assert_matches f-clause "$O.err" 'nothing linted: all 1 commit\(s\) in .* are excluded from the convention \(exclude_authors\)'
+          assert_absent f-not-empty "$O.err" 'holds no commits'
+
+      - name: "(g) a commit no pattern matches is a refusal, on bump and lint, but not on notes"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          O="$RUNNER_TEMP/g0"; run_glyph "$O.out" "$O.err" bump --range v0.4.2..br-unmatched --json
+          assert_rc g-bump 3
+          assert_empty_stdout g-bump "$O.out"
+          assert_envelope g-bump "$O.err" 3
+          assert_says g-bump "$O.err" 'refusing to version the range'
+          # Every violation is carried, and the message says so rather than
+          # naming one and dropping the rest.
+          assert_says g-bump "$O.err" '(+1 more violation(s), all in details)'
+          assert_jq  g-bump "$O.err" '.error.details|length==2'
+          # THE clause that makes exit 3 mean what this arm says it means: a
+          # glyph.toml that failed to load also exits 3, so without this the
+          # step greens when the fixture's config is broken, when a pattern was
+          # mistyped, and when the offending commits were never created.
+          assert_lacks g-bump "$O.err" 'glyph.toml:'
+          # Deliberately NOT asserted: the "N configured patterns" count. The
+          # gemoji preset writes 4 while this repository's own committed config
+          # carries 5 (the hand-added v1-acceptance block), so that number says
+          # which config was loaded, not which mechanism fired.
+          O="$RUNNER_TEMP/g1"; run_glyph "$O.md" "$O.err" notes --range v0.4.2..br-unmatched
+          assert_rc g-notes 0
+          O="$RUNNER_TEMP/g2"; run_glyph "$O.out" "$O.err" lint --range v0.4.2..br-unmatched
+          assert_rc g-lint 3
+          assert_empty_stdout g-lint "$O.out"
+          assert_lacks g-lint "$O.err" 'glyph.toml:'
+          # `|| true`: `grep -c` exits 1 on zero matches, and a `run:` block is
+          # bash -e, so the count assignment would take the whole step down
+          # before it could report the count it just measured.
+          assert_eq g-annotations "$(grep -c '^::error::' "$O.err" || true)" 2
+
+      - name: "(h) narrowing the sigil alphabet names the offender by SUBJECT"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          sed -i 's/\[=~^!%\]/[=~^!]/' glyph.toml
+          grep -n 'semver_sigil>' glyph.toml
+          O="$RUNNER_TEMP/h"; run_glyph "$O.out" "$O.err" bump --range v0.4.2..br-promote --json
+          assert_rc h 3
+          assert_empty_stdout h "$O.out"
+          assert_envelope h "$O.err" 3
+          assert_lacks h "$O.err" 'glyph.toml:'
+          # By subject, not by sha: a fixture sha is minted fresh on every run,
+          # so a sha assertion would be a value only this run could satisfy.
+          assert_eq h-offender "$(envelope "$O.err" | jq -r '.error.details[0].subject')" ':rocket:(demo)% call it 1.0'
+          git checkout -- glyph.toml
+          git diff --quiet -- glyph.toml
+
+      - name: "(i) section ORDER, as one assertion over the whole document"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          # One join, not four independent greps: order is what note.sections
+          # decides, and four `grep -q '^## X'` calls cannot see it. That is
+          # the exact hole in the arm this file replaces.
+          O="$RUNNER_TEMP/i"; run_glyph "$O.json" "$O.err" notes --range v0.4.2..br-notes --json
+          assert_rc i-notes 0
+          assert_eq i-order "$(jq -r '[.sections[].title]|join("|")' "$O.json")" 'Breaking Changes|Features|Fixes|Dependencies'
+
+      - name: "(j) the template is applied to matched commits, and only the fallback is raw"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          O="$RUNNER_TEMP/j"; run_glyph "$O.json" "$O.err" notes --range v0.4.2..br-notes --json
+          assert_rc j-notes 0
+          jq -r '[.sections[]|select(.title=="Features")|.lines[]][]' "$O.json" > "$O.features"
+          # shellcheck disable=SC2016
+          assert_line j-template "$O.features" '- add the demo feature `@tester`'
+          # The fallback, pinned to exactly one line: a commit no pattern
+          # matched keeps its raw first line, and the author is still fenced.
+          jq -r '[.sections[]|select(.title=="Dependencies")|.lines[]][]' "$O.json" > "$O.deps"
+          assert_eq j-deps-count "$(wc -l < "$O.deps" | tr -d ' ')" 1
+          # shellcheck disable=SC2016
+          assert_line j-fallback "$O.deps" '- build(deps): bump golang.org/x/net from 0.1 to 0.2 `@dependabot`\[bot]'
+          # Nothing anywhere renders as its raw gitmoji subject: that is what a
+          # template silently not being applied looks like.
+          jq -r '.sections[].lines[]' "$O.json" > "$O.all"
+          assert_no_line_matching j-no-raw "$O.all" '^- :'
+
+      - name: "(k) a revert reads as a revert, not as the change it undid"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          O="$RUNNER_TEMP/k"; run_glyph "$O.json" "$O.err" notes --range v0.4.2..br-notes --json
+          assert_rc k-notes 0
+          jq -r '[.sections[]|select(.title=="Fixes")|.lines[]][]' "$O.json" > "$O.fixes"
+          # shellcheck disable=SC2016
+          assert_line k-revert "$O.fixes" '- Revert ":sparkles:(demo)^ add the demo feature" `@tester`'
+          # The regression this pattern exists for: capturing only the text
+          # inside the quotes renders the reverted commit's own subject under
+          # Fixes, which reads as that change being MADE. This repository
+          # shipped exactly that in its v0.4.1 draft.
+          # shellcheck disable=SC2016
+          assert_absent k-not-the-inner-subject "$O.fixes" '- add the demo feature `@tester`'
+
+      - name: "(l) the usage exits are 2, and say which usage"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          # Exit 2 and not 3. `lint --stdin=false` once exited 3, telling every
+          # CI gate in the fleet that a commit violated the convention when
+          # none had been submitted.
+          O="$RUNNER_TEMP/l0"; run_glyph "$O.out" "$O.err" lint --stdin=false
+          assert_rc l-stdin 2
+          assert_envelope l-stdin "$O.err" 2
+          assert_says l-stdin "$O.err" '--stdin IS the mode'
+          O="$RUNNER_TEMP/l1"; run_glyph "$O.out" "$O.err" init --gemoji
+          assert_rc l-init 2
+          assert_envelope l-init "$O.err" 2
+          assert_says l-init "$O.err" 'glyph.toml already exists'
+          O="$RUNNER_TEMP/l2"; run_glyph "$O.out" "$O.err" bump --range v0.4.2..br-clamp --current v3.0.0-rc.3
+          assert_rc l-current 2
+          assert_envelope l-current "$O.err" 2
+          assert_says l-current "$O.err" 'is not a plain semver version'
+
+  # ── tier 2 ────────────────────────────────────────────────────────────────
+  # ONE frozen window, for the two assertions only GitHub can make.
+  #
+  # Goes red if: the squash-aware walk stops resolving a merge point to its
+  # pull request's individual commits (the `(#52)` line below exists ONLY in
+  # GitHub's answer to /pulls/52/commits — main's squash subject is a different
+  # sentence carrying a different sigil, and the arm proves that in the same
+  # step), the 0.x fold changes, section order changes, or the frozen window
+  # stops existing.
+  #
+  # v0.3.0 is a linked WORKTREE, not a checkout of live main: glyph resolves
+  # glyph.toml through `git rev-parse --show-toplevel`, which in a linked
+  # worktree is the worktree, so the frozen window brings its own frozen config
+  # and the primary checkout is never dirtied.
+  walk:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GLYPH: ${{ github.workspace }}/kit/glyph
+      ASSERT: ${{ github.workspace }}/kit/assert.sh
+      WANT_VERSION: ${{ needs.build.outputs.version }}
+      # Never the literal owner/name: the arm this file replaces hardcoded it,
+      # so a fork or a rename would have judged this repository from somewhere
+      # else and said nothing.
+      REPO: ${{ github.repository }}
+      # Anonymous is rate-limited, and a 403 mid-walk exits 4 — which this
+      # tier's arms would then report as a glyph defect.
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          path: repo
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: e2e-kit
+          path: kit
+
+      - name: Take delivery of the kit
+        run: |
+          set -euo pipefail
+          chmod +x "$GLYPH"
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          assert_eq artifact-identity "$("$GLYPH" --version)" "$WANT_VERSION"
+          assert_canaries
+
+      - name: The frozen window still exists where this tier says it does
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          # First, so a rewritten history fails with a sentence a reader can
+          # act on instead of an incomprehensible version diff three steps down.
+          git rev-parse 'v0.3.0^{commit}'
+          git rev-parse 'v0.2.2^{commit}'
+          if ! git merge-base --is-ancestor v0.3.0 HEAD; then
+            echo "::error::the frozen window no longer exists: v0.3.0 is not an ancestor of the ref under test"
+            exit 1
           fi
+          git worktree add -q --detach "$RUNNER_TEMP/w" v0.3.0
+          assert_eq worktree-head "$(git -C "$RUNNER_TEMP/w" rev-parse HEAD)" "$(git rev-parse 'v0.3.0^{commit}')"
+          # The config this tier judges with must be the frozen one, not live
+          # main's: both sides resolved from inside the worktree, so a symlink
+          # under $RUNNER_TEMP cannot make this pass or fail for the wrong
+          # reason.
+          assert_eq worktree-toplevel \
+            "$(cd "$RUNNER_TEMP/w" && git rev-parse --show-toplevel)" \
+            "$(cd "$RUNNER_TEMP/w" && pwd -P)"
 
-          "$BIN" release --json >/tmp/rel2.json 2>/tmp/rel2.err || fail "release rerun went red: $(cat /tmp/rel2.err)"
-          [ "$(jq -r .action /tmp/rel2.json)" = "update" ] || fail "rerun action '$(jq -r .action /tmp/rel2.json)', want update"
-          # Idempotence is "never a second draft" — asserted on the API, not on
-          # the draft URL: GitHub mints a fresh untagged- slug on every PATCH,
-          # so URL equality is not evidence of anything.
-          drafts=$(gh api repos/akira-toriyama/glyph-test/releases --jq '[.[] | select(.draft)] | length')
-          [ "$drafts" = "1" ] || fail "expected exactly one draft after the rerun, found $drafts"
-          [ "$(gh api repos/akira-toriyama/glyph-test/releases --jq '[.[] | select(.draft)][0].tag_name')" = "v0.3.0" ] || fail "the one draft does not carry v0.3.0"
+      - name: The 0.x fold, at the coordinate the question was asked about
+        if: ${{ !cancelled() }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          cd "$RUNNER_TEMP/w"
+          O="$RUNNER_TEMP/walk-bump"
+          run_glyph "$O.json" "$O.err" bump --since-tag=v0.2.2 --json --repo "$REPO"
+          assert_rc walk-bump 0
+          assert_eq walk-current "$(jq -r .current "$O.json")" v0.2.2
+          assert_eq walk-next    "$(jq -r .next    "$O.json")" v0.3.0
+          assert_eq walk-level   "$(jq -r .level   "$O.json")" minor
+          # The reason names the commit that decided it, so a range that folds
+          # to the same answer for a different reason is still a finding.
+          assert_eq walk-reason "$(jq -r '.reason|split(" ")|.[0:2]|join(" ")' "$O.json")" '220ed2e ^'
 
-          echo "e2e: init/lint/bump/notes/release all answered the v2 contract; draft: $url1"
+      - name: The line no fixture can buy
+        if: ${{ !cancelled() }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          cd "$RUNNER_TEMP/w"
+          O="$RUNNER_TEMP/walk-notes"
+          run_glyph "$O.json" "$O.err" notes --since-tag=v0.2.2 --json --repo "$REPO"
+          assert_rc walk-notes 0
+          assert_eq walk-order "$(jq -r '[.sections[].title]|join("|")' "$O.json")" 'Features|Fixes'
+          jq -r '[.sections[]|select(.title=="Fixes")|.lines[]][]' "$O.json" > "$O.fixes"
+          # shellcheck disable=SC2016
+          assert_line walk-presquash "$O.fixes" '- silence the SC2015 e2e-v2.yml never had to answer for (#52) `@akira-toriyama`'
+          # …and the same step proves the line could only have come from the
+          # API. This subject is nowhere in the released branch's history: the
+          # pull was squash-merged under a different sentence. Together, these
+          # two assertions are the entire justification for a live tier.
+          assert_eq walk-not-in-git "$(git log --format=%s v0.2.2..HEAD | grep -c 'silence the SC2015' || true)" 0
+
+      - name: Over live main, assert only what cannot rot
+        if: ${{ !cancelled() }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          # A RELATIONSHIP, never a literal: main moves, so any version written
+          # down here is a value with an expiry date — which is precisely how
+          # the arm this file replaces went red without a defect.
+          O="$RUNNER_TEMP/live"
+          run_glyph "$O.rel.json" "$O.rel.err" release --dry-run --json --since-tag=auto --repo "$REPO"
+          assert_rc live-release 0
+          run_glyph "$O.bump.json" "$O.bump.err" bump --since-tag=auto --json --repo "$REPO"
+          assert_rc live-bump 0
+          assert_eq live-agree "$(jq -r .tag "$O.rel.json")" "$(jq -r .next "$O.bump.json")"
+          # What this arm does NOT prove, and must not be read as proving:
+          #   * `.action` is unasserted here. This job holds `contents: read`,
+          #     and a read token sees ZERO draft releases (GitHub exposes
+          #     drafts to push access only — measured, release.yml run
+          #     30737721992), so create-vs-update would be a statement about
+          #     the token. Tier `drafts` holds write and asserts it there.
+          #   * it is coupled to the published floor: if someone PUBLISHES the
+          #     rolling draft, `release --dry-run` starts exiting 4 here and
+          #     the finding is about this sandbox, not about glyph.
+
+      - name: Leave the checkout as it was found
+        if: ${{ !cancelled() }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          git worktree remove --force "$RUNNER_TEMP/w" || true
+          test -z "$(git status --porcelain)"
+
+  # ── tier 3 ────────────────────────────────────────────────────────────────
+  # Four refusals and zero writes.
+  #
+  # Goes red if: the published floor stops guarding, the write-side ref
+  # boundary stops firing on a real run or stops exempting a dry run, the wedge
+  # stops naming the pull request that holds the range hostage — or any of them
+  # writes something on the way out. DESIGN §4 names this repository as the
+  # ONLY oracle for the ref boundary; scripts/fleet-preflight.sh is
+  # structurally blind to it, and until this file nothing had ever fired it.
+  #
+  # `contents: write` on a job that asserts it writes nothing is not a
+  # contradiction, it is the precondition: a `contents: read` token sees zero
+  # drafts, so the before/after listing would be `[]` vs `[]` and the strongest
+  # assertion in the job would pass by being blind (measured — release.yml run
+  # 30737721992 concluded "the draft is gone" from exactly this).
+  #
+  # Not in the `release` concurrency group, deliberately. The one arm that runs
+  # for real returns at cmd_release.go's ref check — before the walk and before
+  # every write — so there is nothing here to serialise; and adding a second
+  # group member would let a third arrival cancel the PENDING member, which is
+  # `drafts`. The listing snapshot is what catches it if that ever stops being
+  # true.
+  refusals:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GLYPH: ${{ github.workspace }}/kit/glyph
+      ASSERT: ${{ github.workspace }}/kit/assert.sh
+      WANT_VERSION: ${{ needs.build.outputs.version }}
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          path: repo
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: e2e-kit
+          path: kit
+
+      - name: Take delivery of the kit
+        run: |
+          set -euo pipefail
+          chmod +x "$GLYPH"
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          assert_eq artifact-identity "$("$GLYPH" --version)" "$WANT_VERSION"
+          assert_canaries
+
+      - name: Record the releases listing before any arm runs
+        id: before
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/releases" \
+            --jq '[.[] | {id, tag_name, draft, updated_at}] | sort_by(.id) | tostring' > "$RUNNER_TEMP/before.json"
+          cat "$RUNNER_TEMP/before.json"
+          echo "listing=$(cat "$RUNNER_TEMP/before.json")" >> "$GITHUB_OUTPUT"
+
+      - name: "(a) the published floor refuses a version that is not greater"
+        if: ${{ !cancelled() }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          # Derived, not written down: `below:<latest published>` walks from the
+          # tag under the floor, so the arm keeps meaning the same thing after
+          # the next publish instead of pinning a tag that can be deleted.
+          # `|| true`: a repository with no published release 404s here, and a
+          # `run:` block is bash -e, so the assignment would take the step down
+          # before it could say which of the two things went wrong.
+          latest=$(gh api "repos/$REPO/releases/latest" --jq .tag_name 2>/dev/null || true)
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "::error::this repository has no published release, so the published floor has nothing to guard and this arm cannot be about it"
+            exit 1
+          fi
+          echo "latest published release: $latest"
+          O="$RUNNER_TEMP/ra"
+          run_glyph "$O.out" "$O.err" release --dry-run --json --since-tag="below:$latest" --repo "$REPO"
+          assert_rc a-floor 4
+          assert_empty_stdout a-floor "$O.out"
+          assert_envelope a-floor "$O.err" 4
+          assert_says a-floor "$O.err" 'is not greater than the latest published release'
+
+      - name: "(b) the write-side ref boundary refuses a REAL run off the default branch"
+        if: ${{ !cancelled() }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          # No --dry-run. This is the only honest way to test a guard whose
+          # whole claim is about writes, and it is safe for a reason a reader
+          # can check rather than trust: the ref check runs before the walk and
+          # before every request that could write, so a fired guard costs one
+          # GET of the repository object. If it ever stops firing, this arm
+          # goes red on the exit code AND the listing snapshot goes red on the
+          # write — two independent detectors for one regression.
+          # shellcheck disable=SC2034
+          GLYPH_ENV=GITHUB_REF=refs/heads/e2e-probe
+          O="$RUNNER_TEMP/rb"
+          run_glyph "$O.out" "$O.err" release --json --since-tag=auto --repo "$REPO"
+          unset GLYPH_ENV
+          assert_rc b-ref 4
+          assert_empty_stdout b-ref "$O.out"
+          assert_envelope b-ref "$O.err" 4
+          assert_says b-ref "$O.err" 'writes the rolling draft from the default branch only'
+
+      - name: "(c) …and exempts a dry run, saying so"
+        if: ${{ !cancelled() }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          # shellcheck disable=SC2034
+          GLYPH_ENV=GITHUB_REF=refs/heads/e2e-probe
+          O="$RUNNER_TEMP/rc"
+          run_glyph "$O.out" "$O.err" release --dry-run --json --since-tag=auto --repo "$REPO"
+          unset GLYPH_ENV
+          assert_rc c-exempt 0
+          # A notice, so the raw stream is the right place to read it — and the
+          # absence of an envelope is what makes "exempt" mean exempt rather
+          # than "refused for some other reason that happens to exit 0".
+          assert_matches c-exempt "$O.err" 'nothing is written, so the ref this release would write from was not judged'
+          assert_absent c-exempt-no-envelope "$O.err" '"error"'
+          jq -e 'has("tag")' "$O.out" > /dev/null
+
+      - name: "(d) the wedge names the pull request that holds the range hostage"
+        if: ${{ !cancelled() }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          pulls=$(gh api "repos/$REPO/pulls?state=closed&sort=updated&direction=desc&per_page=30")
+          pr=$(printf '%s' "$pulls" | jq -r '[.[]|select(.merged_at)][0].number')
+          mp=$(printf '%s' "$pulls" | jq -r '[.[]|select(.merged_at)][0].merge_commit_sha')
+          echo "newest merged pull: #$pr at merge point $mp"
+          if [ -z "$pr" ] || [ "$pr" = "null" ]; then
+            echo "::error::no merged pull request found — this arm cannot be about the wedge"
+            exit 1
+          fi
+          # A LOCAL tag, one commit below the merge point, so the walk starts
+          # inside the pull request's own commits. Never pushed.
+          git tag -f e2e-wedge "$mp^"
+          # A separate worktree, so the config swap below cannot leak into the
+          # arms above or into whatever runs next.
+          git worktree add -q --detach "$RUNNER_TEMP/wedge" HEAD
+          cat > "$RUNNER_TEMP/wedge/glyph.toml" <<'TOML'
+          schema = 1
+          [commit]
+          style = "gemoji"
+          template = '''
+          <:code:>[(scope)]<semver_sigil> <subject>
+          '''
+          [[patterns]]
+          # Matches nothing, so every commit inside the merged pull is a
+          # violation and the wedge is reached deterministically. Two keys here
+          # are not decoration, and both defend against exiting 3 for the WRONG
+          # reason — a config error also exits 3, naming glyph.toml. The
+          # semver_sigil key, because a pattern with no sigil source is one. And
+          # the subject group, because note.line cites $subject and a name no
+          # pattern captures is the other: measured on run 32032150710, where
+          # this arm caught exactly that and reported it rather than passing.
+          pattern = '^zzz-matches-nothing-zzz(?P<subject>.*)'
+          semver_sigil = '='
+          [note]
+          line = '- $subject'
+          [[note.sections]]
+          semver = "major"
+          title = "Breaking Changes"
+          TOML
+          cd "$RUNNER_TEMP/wedge"
+          O="$RUNNER_TEMP/rd"
+          run_glyph "$O.out" "$O.err" release --dry-run --json --since-tag=e2e-wedge --repo "$REPO"
+          assert_rc d-wedge 3
+          assert_empty_stdout d-wedge "$O.out"
+          assert_envelope d-wedge "$O.err" 3
+          assert_lacks d-wedge "$O.err" 'glyph.toml:'
+          assert_says d-wedge "$O.err" 'every release wedges here until the walk starts past it'
+          # The pull NUMBER, so a change in this repository's merge settings
+          # fails loudly instead of quietly asserting some other shape.
+          assert_says d-wedge "$O.err" "#$pr"
+          # This is the fail-fast arm, and carrying no details key is what
+          # distinguishes it from the accumulating --range refusal in tier 1.
+          assert_jq d-wedge "$O.err" '.error|has("details")|not'
+          cd "$GITHUB_WORKSPACE/repo"
+          git worktree remove --force "$RUNNER_TEMP/wedge"
+          git tag -d e2e-wedge
+
+      - name: Assert every arm above wrote nothing
+        # Gated on the SNAPSHOT step, not on always(): if `before` never ran,
+        # the comparison below reds with "a refusing arm changed the listing" —
+        # a false red wearing a true red's message, which is worse than not
+        # running at all.
+        if: ${{ !cancelled() && steps.before.outcome == 'success' }}
+        env:
+          BEFORE: ${{ steps.before.outputs.listing }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/releases" \
+            --jq '[.[] | {id, tag_name, draft, updated_at}] | sort_by(.id) | tostring' > "$RUNNER_TEMP/after.json"
+          echo "before: $BEFORE"
+          echo "after:  $(cat "$RUNNER_TEMP/after.json")"
+          if [ "$BEFORE" != "$(cat "$RUNNER_TEMP/after.json")" ]; then
+            echo "::error::a refusing arm changed the releases listing — a refusal that wrote something is the defect, not the exit code"
+            exit 1
+          fi
+          echo "the listing is byte-identical: four refusals, zero writes"
+
+  # ── tier 4 ────────────────────────────────────────────────────────────────
+  # The only job in this file that writes, and the only one that can.
+  #
+  # Goes red if: draft_on_none stops creating a placeholder, stops converging
+  # on the one draft it already made, stops deleting it when the flag goes off,
+  # or stops RETAGGING in place when a real version finally arrives. That last
+  # one is asserted as release-id equality and nothing else — a PATCH mints a
+  # fresh `untagged-` slug, so url equality and url inequality both prove
+  # nothing, and id equality is the only thing that tells a retag-in-place from
+  # a delete-and-recreate. "Never a second draft" is the ratified behaviour.
+  #
+  # The `none` verdict comes from an EMPTY range (a local `e2e-none` tag at
+  # HEAD), not from waiting for a quiet main: an empty range costs zero commit
+  # round-trips, and `--since-tag=auto` skips `e2e-none` as unparseable, so it
+  # cannot disturb release.yml.
+  #
+  # Nothing here publishes: `glyph release` always sends `draft:true`, so a
+  # published release could only come from this file — and under immutable
+  # releases it would permanently raise the published floor, with its tag
+  # burned forever if deleted.
+  #
+  # Residual risk, stated rather than hidden: phase 0 sweeps the rolling draft
+  # and phase 5 rebuilds it. If this job is CANCELLED between them, glyph-test
+  # has no draft until release.yml's next push recreates it. That is why P5
+  # runs under `!cancelled()` and why this job holds the release group.
+  drafts:
+    needs: [build, walk, refusals]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    # The group release.yml and livefire.yml already share. The file this
+    # replaces did a real `release --json` against the same rolling draft
+    # WITHOUT joining it.
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    env:
+      GLYPH: ${{ github.workspace }}/kit/glyph
+      ASSERT: ${{ github.workspace }}/kit/assert.sh
+      WANT_VERSION: ${{ needs.build.outputs.version }}
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          path: repo
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: e2e-kit
+          path: kit
+
+      - name: Take delivery of the kit, and check the coordinates this job writes from
+        id: coordinates
+        run: |
+          set -euo pipefail
+          chmod +x "$GLYPH"
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          assert_eq artifact-identity "$("$GLYPH" --version)" "$WANT_VERSION"
+          assert_canaries
+          # The real runs below are subject to glyph's own write-side ref
+          # boundary (tier 3 arm (b) is what proves it fires). Dispatched from
+          # anywhere but the default branch they would all exit 4, and this job
+          # would red with four confusing messages instead of one clear one.
+          want="refs/heads/${DEFAULT_BRANCH}"
+          if [ "$GITHUB_REF" != "$want" ]; then
+            echo "::error::this job writes, so it must be dispatched from $want — this run is on $GITHUB_REF"
+            exit 1
+          fi
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - name: Phase 0 — sweep the drafts glyph would claim, by id
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          # Deleted by ID, because that is the handle the phases below assert
+          # on — but SELECTED by the same rule draftplan.managed() applies, so
+          # this job destroys only what glyph itself would have retagged or
+          # removed. A draft release cannot be undeleted, and a wider sweep
+          # buys nothing: a hand-made draft tagged anything else is filtered
+          # out before PlanDraft chooses, so it could never have made phase 1's
+          # action something other than `create`.
+          ids=$(gh api "repos/$REPO/releases" \
+            --jq '.[] | select(.draft) | select(.tag_name == "Unreleased" or (.tag_name | test("^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))) | .id')
+          for id in $ids; do
+            echo "sweeping glyph-managed draft $id"
+            gh api -X DELETE "repos/$REPO/releases/$id"
+          done
+          assert_eq p0-swept "$(gh api "repos/$REPO/releases" --jq '[.[] | select(.draft) | select(.tag_name == "Unreleased" or (.tag_name | test("^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")))] | length')" 0
+          # A LOCAL tag at HEAD, never pushed: the empty range is what makes
+          # the verdict `none` without waiting for a quiet main.
+          git tag -f e2e-none HEAD
+
+      - name: Phase 1 — draft_on_none ON over an empty range CREATES the placeholder
+        if: ${{ !cancelled() && steps.coordinates.outcome == 'success' }}
+        id: p1
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          sed -i 's/^draft_on_none = .*/draft_on_none = true/' glyph.toml
+          # The invariant is "the flag flip is the ONLY thing this job changed
+          # in the tree", which is why every output in this job is written to
+          # $RUNNER_TEMP: an untracked file here would make the guard, and P5's
+          # clean-tree assertion, quietly meaningless.
+          case "$(git status --porcelain)" in
+            ""|" M glyph.toml") ;;
+            *) echo "::error::the worktree carries more than the flag flip:"; git status --porcelain; exit 1 ;;
+          esac
+          O="$RUNNER_TEMP/p1"
+          run_glyph "$O.json" "$O.err" release --json --since-tag=e2e-none --repo "$REPO"
+          # Exit 1 is the soft "no release" fold, not a failure — the machine
+          # contract a caller branches on to skip its publish step.
+          assert_rc p1 1
+          assert_eq p1-tag    "$(jq -r .tag    "$O.json")" Unreleased
+          assert_eq p1-action "$(jq -r .action "$O.json")" create
+          assert_eq p1-level  "$(jq -r .level  "$O.json")" none
+          jq -e 'has("url")' "$O.json" > /dev/null
+          gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)|{id,tag_name,name}]|tostring'
+          assert_eq p1-count "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)]|length')" 1
+          assert_eq p1-tag-name "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].tag_name')" Unreleased
+          assert_eq p1-name     "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].name')" Unreleased
+          echo "id=$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].id')" >> "$GITHUB_OUTPUT"
+
+      - name: Phase 2 — a rerun converges on the SAME release id
+        if: ${{ !cancelled() && steps.p1.outcome == 'success' }}
+        working-directory: repo
+        env:
+          ID0: ${{ steps.p1.outputs.id }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          O="$RUNNER_TEMP/p2"
+          run_glyph "$O.json" "$O.err" release --json --since-tag=e2e-none --repo "$REPO"
+          assert_rc p2 1
+          assert_eq p2-action "$(jq -r .action "$O.json")" update
+          assert_eq p2-count  "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)]|length')" 1
+          # The id, never the url. A PATCH mints a fresh `untagged-` slug, so
+          # `url == url` and `url != url` are both compatible with a correct
+          # implementation AND with a delete-and-recreate.
+          assert_eq p2-same-id "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].id')" "$ID0"
+
+      - name: Phase 3 — draft_on_none OFF over the same range DELETES it
+        if: ${{ !cancelled() && steps.coordinates.outcome == 'success' }}
+        id: p3
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          sed -i 's/^draft_on_none = .*/draft_on_none = false/' glyph.toml
+          case "$(git status --porcelain)" in
+            ""|" M glyph.toml") ;;
+            *) echo "::error::the worktree carries more than the flag flip:"; git status --porcelain; exit 1 ;;
+          esac
+          O="$RUNNER_TEMP/p3"
+          run_glyph "$O.json" "$O.err" release --json --since-tag=e2e-none --repo "$REPO"
+          assert_rc p3 1
+          # `has`, never `jq -r .tag` compared against a string: for an ABSENT
+          # key `jq -r` prints the four characters `null`, so `[ "$t" = null ]`
+          # is satisfied by a key that is missing AND by one whose value is
+          # JSON null, and `[ "$t" != v1.2.3 ]` is satisfied by both plus every
+          # wrong version.
+          jq -e 'has("tag")|not' "$O.json" > /dev/null
+          assert_eq p3-action "$(jq -r .action "$O.json")" delete
+          assert_eq p3-none   "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)|select(.tag_name=="Unreleased")]|length')" 0
+
+      - name: Phase 4 — a real version RETAGS the placeholder in place
+        if: ${{ !cancelled() && steps.p3.outcome == 'success' }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          sed -i 's/^draft_on_none = .*/draft_on_none = true/' glyph.toml
+          O="$RUNNER_TEMP/p4a"
+          run_glyph "$O.json" "$O.err" release --json --since-tag=e2e-none --repo "$REPO"
+          assert_rc p4-recreate 1
+          assert_eq p4-recreate-action "$(jq -r .action "$O.json")" create
+          id1=$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].id')
+          echo "the placeholder to be retagged: $id1"
+          # Same flag, same draft, but now a range that actually moves the
+          # version. This is the transition the ratified "never a second draft"
+          # is about, and it is the only one a `none`-only test cannot reach.
+          O="$RUNNER_TEMP/p4b"
+          run_glyph "$O.json" "$O.err" release --json --since-tag=auto --repo "$REPO"
+          assert_rc p4-retag 0
+          assert_eq p4-retag-action "$(jq -r .action "$O.json")" update
+          run_glyph "$RUNNER_TEMP/p4bump.json" "$RUNNER_TEMP/p4bump.err" bump --since-tag=auto --json --repo "$REPO"
+          assert_rc p4-bump 0
+          assert_eq p4-agree "$(jq -r .tag "$O.json")" "$(jq -r .next "$RUNNER_TEMP/p4bump.json")"
+          assert_eq p4-count "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)]|length')" 1
+          assert_eq p4-same-id "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].id')" "$id1"
+
+      - name: Phase 5 — put the repository back the way release.yml expects it
+        # !cancelled(), so a red phase above still leaves this sandbox with the
+        # one rolling draft release.yml's read-back asserts on every push — but
+        # gated on the coordinate guard like every other phase that writes. A
+        # run the guard stopped swept nothing, so there is nothing to put back,
+        # and a `release --json` off the default branch would only red a second
+        # time with glyph's own exit 4.
+        if: ${{ !cancelled() && steps.coordinates.outcome == 'success' }}
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          git checkout -- glyph.toml
+          O="$RUNNER_TEMP/p5"
+          run_glyph "$O.json" "$O.err" release --json --since-tag=auto --repo "$REPO"
+          assert_rc p5 0
+          assert_eq p5-count "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)]|length')" 1
+          # release.yml's own read-back regex, so the two jobs agree on what
+          # steady state is rather than each carrying its own idea of it.
+          gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].tag_name' > "$RUNNER_TEMP/p5.tag"
+          assert_matches p5-steady-state "$RUNNER_TEMP/p5.tag" '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          git tag -d e2e-none || true
+          test -z "$(git status --porcelain)"
+          # After the rollout step that moves this repository's own note.line
+          # to the optional span, the body below is where the preset fix is
+          # proven to have REACHED a consuming repo:
+          #   jq -r .body "$O.json" > body.md
+          #   assert_line   p5-control body.md '<a line with a pull number>'
+          #   assert_no_line_matching p5-no-empty-parens body.md ' \(\)( |$)'
+          # It is deliberately not asserted yet: this repository's glyph.toml
+          # may only take the span AFTER its pinned binary understands it. That
+          # order is NOT self-enforcing, which is the reason to write it down.
+          # Measured against the binary this repository pins today: a config
+          # carrying the new line loads clean and renders `$[ ()]` as literal
+          # text on every line, at exit 0, with no gate anywhere going red. The
+          # cost of getting the order wrong is a garbled release body nobody is
+          # told about — the same silently-wrong output the span exists to end.
+
+  # ── tier 5 ────────────────────────────────────────────────────────────────
+  # The distribution layer, which no product test can see.
+  #
+  # Goes red if: this repository's glyph pin sites do not all resolve to ONE
+  # version. Same family as the pr-verdict.yml overwrite — a mistake that lives
+  # entirely in the plumbing.
+  #
+  # THIS JOB IS RED TODAY, AND THAT IS THE FINDING. Measured 2026-08-17: five
+  # references at two distinct versions — three callers at v3.0.0-rc.3 and
+  # pin-probe.yml stranded at v2.0.0 in BOTH its `uses:` and its `version:`,
+  # because the commit that moved the callers moved only the callers.
+  # pin-probe.yml is the file whose entire purpose is detecting pin drift, it
+  # has zero workflow runs ever, and so nothing has ever reported this. The fix
+  # is to move pin-probe's pin, not to loosen the check.
+  #
+  # A `uses:`-only grep would miss it, because half the drift lives in a
+  # `version:` input — which is also why the scan strips comments before it
+  # looks: an input pattern that loose matches PROSE, and the first draft of
+  # this job counted the paragraph you are reading as a sixth pin site.
+  distribution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Every glyph pin site in this repository resolves to one version
+        run: |
+          set -euo pipefail
+          re='akira-toriyama/glyph[A-Za-z0-9._/-]*@v[0-9A-Za-z._-]*|version: *v[0-9A-Za-z._-]*'
+          # Comments stripped first. A line that merely TALKS about a pin is
+          # not a pin site, and a commented-out `uses:` stub is not one either
+          # — glyph's own workflow tests require those to carry a placeholder
+          # version, so counting them would red every repo that keeps one.
+          # Stripping can lose a reference, never invent one, which is what the
+          # floor assertion below is for.
+          find .github -type f -print0 | while IFS= read -r -d '' f; do
+            sed 's/#.*//' "$f" | grep -nE "$re" | sed "s|^|$f:|" || true
+          done
+          # `|| true` on the whole pipeline: finding NOTHING is the failure this
+          # job's floor assertion exists to report, and under `bash -e -o
+          # pipefail` grep's exit 1 would instead kill the step here — silently,
+          # with no output at all, which is what the first run of this arm did.
+          refs=$(find .github -type f -print0 | xargs -0 -n1 sed 's/#.*//' \
+            | grep -oE "$re" | sed 's/.*@//; s/^version: *//' | sort || true)
+          total=$(printf '%s\n' "$refs" | grep -c . || true)
+          distinct=$(printf '%s\n' "$refs" | sort -u | grep -c . || true)
+          echo "pin sites: $total   distinct versions: $distinct"
+          # The positive control FIRST. Without it a grep that silently stopped
+          # matching anything satisfies the uniqueness check below by finding
+          # nothing to disagree — the same shape as a regex guard with no
+          # canary, which is how a fleet invariant dies green.
+          if [ "$total" -lt 4 ]; then
+            echo "::error::found $total glyph pin reference(s) under .github/, want at least 4 — the pattern has stopped matching what it is for"
+            exit 1
+          fi
+          if [ "$distinct" -ne 1 ]; then
+            echo "::error::$total glyph pin site(s) resolve to $distinct distinct versions; a rollout that moves some of them is a rollout that moved none"
+            printf '%s\n' "$refs" | sort | uniq -c
+            exit 1
+          fi
+          echo "all $total pin sites resolve to $(printf '%s\n' "$refs" | head -1)"
