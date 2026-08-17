@@ -1123,11 +1123,14 @@ jobs:
           '''
           [[patterns]]
           # Matches nothing, so every commit inside the merged pull is a
-          # violation and the wedge is reached deterministically. The
-          # semver_sigil key is not decoration: a pattern with no sigil source
-          # is a CONFIG error, which exits 3 with a message naming glyph.toml —
-          # the same integer this arm is about to assert, for the wrong reason.
-          pattern = '^zzz-matches-nothing-zzz'
+          # violation and the wedge is reached deterministically. Two keys here
+          # are not decoration, and both defend against exiting 3 for the WRONG
+          # reason — a config error also exits 3, naming glyph.toml. The
+          # semver_sigil key, because a pattern with no sigil source is one. And
+          # the subject group, because note.line cites $subject and a name no
+          # pattern captures is the other: measured on run 32032150710, where
+          # this arm caught exactly that and reported it rather than passing.
+          pattern = '^zzz-matches-nothing-zzz(?P<subject>.*)'
           semver_sigil = '='
           [note]
           line = '- $subject'
