@@ -68,7 +68,13 @@ jobs:
           url1=$(jq -r .url /tmp/rel1.json)
           tag1=$(jq -r .tag /tmp/rel1.json)
           [ "$tag1" = "v0.3.0" ] || fail "release tagged '$tag1', want v0.3.0"
-          [ -n "$url1" ] && [ "$url1" != "null" ] || fail "release reported no draft URL"
+          # Spelled as an if, not `A && B || fail`: shellcheck reads that shape
+          # as a would-be if-then-else and is right to (SC2015) — the C arm runs
+          # when A is false as well, which here is intended and therefore
+          # indistinguishable, to a reader, from the bug the warning is about.
+          if [ -z "$url1" ] || [ "$url1" = "null" ]; then
+            fail "release reported no draft URL"
+          fi
 
           "$BIN" release --json >/tmp/rel2.json 2>/tmp/rel2.err || fail "release rerun went red: $(cat /tmp/rel2.err)"
           [ "$(jq -r .action /tmp/rel2.json)" = "update" ] || fail "rerun action '$(jq -r .action /tmp/rel2.json)', want update"
