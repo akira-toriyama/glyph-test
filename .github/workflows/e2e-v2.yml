@@ -103,6 +103,15 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: glyph/go.mod
+          # The build below compiles whatever ref the dispatcher named, and a
+          # dispatch runs in the DEFAULT BRANCH's cache scope — so a populated
+          # module cache here is written by one ref and read by every later run
+          # of every workflow in this repository. CodeQL flagged exactly that
+          # (run 32032336673, "Cache Poisoning via execution of untrusted
+          # code"); the file this replaced carried `cache: false` and the
+          # rebuild lost it. A cold module download costs seconds and this job
+          # runs on demand.
+          cache: false
 
       # `sh build.sh`, NOT `go build ./cmd/glyph`: build.sh is what stamps the
       # version, and an unstamped binary makes every identity claim below —
