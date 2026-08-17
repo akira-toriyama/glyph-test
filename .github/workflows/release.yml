@@ -42,7 +42,7 @@ jobs:
   # cannot drift. Passing it anyway would reintroduce the hand-bumped default
   # this repo has already been bitten by.
   release:
-    uses: akira-toriyama/glyph/.github/workflows/release.yml@v3.0.0-rc.2
+    uses: akira-toriyama/glyph/.github/workflows/release.yml@feat/zerox-promote-sigil
     with:
       # No `app`, no `binary` — the verdict-only mode.
       dry-run: ${{ github.event.inputs.dry_run == 'true' }}
