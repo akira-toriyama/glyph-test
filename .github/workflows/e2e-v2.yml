@@ -1418,6 +1418,14 @@ jobs:
           run_glyph "$O.json" "$O.err" release --json --since-tag=e2e-none --repo "$REPO"
           assert_rc p4-recreate 1
           assert_eq p4-recreate-action "$(jq -r .action "$O.json")" create
+          # Settle BEFORE capturing the id, not only before asserting a count.
+          # The listing lags a POST, so a bare read here returns the empty
+          # string and every later comparison against it is vacuous — run
+          # 32033387020 red at `p4-same-id answered [371764127], want []`, which
+          # is the id being right and the expectation being nothing at all. The
+          # wait also covers glyph's own next run, which reads the same listing
+          # to decide whether it has a draft to retag.
+          assert_settles p4-visible '[.[]|select(.draft)|select(.tag_name=="Unreleased")]|length' 1
           id1=$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].id')
           echo "the placeholder to be retagged: $id1"
           # Same flag, same draft, but now a range that actually moves the
