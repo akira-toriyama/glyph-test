@@ -1,0 +1,33 @@
+# DELIBERATELY AHEAD OF CANONICAL — do not "fix" this back.
+#
+# Everywhere else this file is a fleet-sync copy of .github/fleet/commit-lint.yml
+# and the rule is "edit the canonical, never the copy". glyph-test is the range
+# the v2 grammar is proven in, so here the pin runs ahead: it names a v3 release
+# CANDIDATE, whose binary is the first that reads this repository's glyph.toml at
+# all. The canonical pin is still v2.0.0, i.e. the v1 engine, which would ignore
+# glyph.toml and answer with the grammar this experiment exists to replace.
+# fleet-sync therefore skips glyph-test for the duration (.github#194, the same
+# clause glyph-test2 has); both come out at rollout, when canonical carries the
+# v3 pin and this file goes back to being an ordinary copy. glyph t-6gt5.
+#
+# What is NOT special: the pin is still a CONCRETE tag. The workflow and the
+# binary it installs ship lockstep from it — the reusable derives the binary
+# version from job.workflow_ref — so a moving ref is wrong here for exactly the
+# reason it is wrong everywhere else.
+name: commit-lint
+
+on:
+  pull_request:
+
+# A reusable can only downgrade the caller's token, never raise it. From glyph
+# v2.0.0 the lint reads the pull request's TITLE — the subject a squash merge
+# lands — over the API, so pull-requests:read has to be granted HERE. Measured
+# on .github#186: with contents:read alone the run does not even start
+# (startup_failure), because the reusable declares more than this block grants.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint:
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v3.0.0-rc.2
