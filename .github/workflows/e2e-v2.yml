@@ -322,6 +322,38 @@ jobs:
             echo "  ok  $arm = $want"
           }
 
+          # assert_settles <arm> <jq over the releases listing> <want>
+          #
+          # The releases listing is EVENTUALLY CONSISTENT after a POST. Measured
+          # against github.com on 2026-08-17: a draft glyph had just created,
+          # and whose url the same run printed, was absent from GET /releases at
+          # t+0s and present at t+3s; the PATCH path was visible immediately.
+          # So a bare read straight after a create asserts the lag rather than
+          # the mechanism — run 32032884689 red at `p1-count answered [0]` and
+          # again at `p3-action answered [none]`, because glyph's own next run
+          # read the same stale listing and found nothing to delete.
+          #
+          # Polling to a deadline, not sleeping a number: a sleep that is one
+          # second short is a flake, and a sleep that is generous hides the day
+          # the lag becomes real. This one says how long it waited when it
+          # fails, which is the finding.
+          assert_settles() {                # assert_settles <arm> <jq> <want> [seconds]
+            local arm="$1" filter="$2" want="$3" got="" deadline
+            deadline=$(( $(date +%s) + ${4:-30} ))
+            while : ; do
+              got="$(gh api "repos/$REPO/releases" --jq "$filter" 2>/dev/null || true)"
+              if [ "$got" = "$want" ]; then
+                echo "  ok  $arm = $want"
+                return 0
+              fi
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::$arm answered [$got], want [$want] — still wrong 30s after the write"
+                return 1
+              fi
+              sleep 2
+            done
+          }
+
           canary() {                        # canary <name> <assertion…>
             local name="$1"; shift
             # Both streams silenced: the helpers report by printing `::error::`
@@ -405,6 +437,19 @@ jobs:
 
             assert_eq ae-accept x x || return 1
             canary "two-things-that-differ" assert_eq ae-reject x y || return 1
+
+            # assert_settles reaches the network, so it can only be canaried
+            # where a token exists — the grammar tier deliberately has none, and
+            # a canary that cannot make its call proves nothing either way. The
+            # accept arm asks for the count that is already true, so it returns
+            # on the first poll; the reject arm asks for a count no listing can
+            # hold, so it must spend its deadline and fail.
+            if [ -n "${GH_TOKEN:-}" ] && [ -n "${REPO:-}" ]; then
+              assert_settles as-accept '[.[]|select(.draft)]|length' \
+                "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)]|length')" 4 || return 1
+              canary "a-listing-that-never-settles" \
+                assert_settles as-reject '[.[]|select(.draft)]|length' -1 2 || return 1
+            fi
 
             rm -rf "$t"
             echo "canaries: every helper accepted its control and rejected its bait"
@@ -1312,7 +1357,7 @@ jobs:
           assert_eq p1-level  "$(jq -r .level  "$O.json")" none
           jq -e 'has("url")' "$O.json" > /dev/null
           gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)|{id,tag_name,name}]|tostring'
-          assert_eq p1-count "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)]|length')" 1
+          assert_settles p1-count '[.[]|select(.draft)]|length' 1
           assert_eq p1-tag-name "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].tag_name')" Unreleased
           assert_eq p1-name     "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].name')" Unreleased
           echo "id=$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].id')" >> "$GITHUB_OUTPUT"
@@ -1330,7 +1375,7 @@ jobs:
           run_glyph "$O.json" "$O.err" release --json --since-tag=e2e-none --repo "$REPO"
           assert_rc p2 1
           assert_eq p2-action "$(jq -r .action "$O.json")" update
-          assert_eq p2-count  "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)]|length')" 1
+          assert_settles p2-count '[.[]|select(.draft)]|length' 1
           # The id, never the url. A PATCH mints a fresh `untagged-` slug, so
           # `url == url` and `url != url` are both compatible with a correct
           # implementation AND with a delete-and-recreate.
@@ -1359,7 +1404,7 @@ jobs:
           # wrong version.
           jq -e 'has("tag")|not' "$O.json" > /dev/null
           assert_eq p3-action "$(jq -r .action "$O.json")" delete
-          assert_eq p3-none   "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)|select(.tag_name=="Unreleased")]|length')" 0
+          assert_settles p3-none '[.[]|select(.draft)|select(.tag_name=="Unreleased")]|length' 0
 
       - name: Phase 4 — a real version RETAGS the placeholder in place
         if: ${{ !cancelled() && steps.p3.outcome == 'success' }}
@@ -1385,7 +1430,7 @@ jobs:
           run_glyph "$RUNNER_TEMP/p4bump.json" "$RUNNER_TEMP/p4bump.err" bump --since-tag=auto --json --repo "$REPO"
           assert_rc p4-bump 0
           assert_eq p4-agree "$(jq -r .tag "$O.json")" "$(jq -r .next "$RUNNER_TEMP/p4bump.json")"
-          assert_eq p4-count "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)]|length')" 1
+          assert_settles p4-count '[.[]|select(.draft)]|length' 1
           assert_eq p4-same-id "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].id')" "$id1"
 
       - name: Phase 5 — put the repository back the way release.yml expects it
@@ -1405,7 +1450,7 @@ jobs:
           O="$RUNNER_TEMP/p5"
           run_glyph "$O.json" "$O.err" release --json --since-tag=auto --repo "$REPO"
           assert_rc p5 0
-          assert_eq p5-count "$(gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)]|length')" 1
+          assert_settles p5-count '[.[]|select(.draft)]|length' 1
           # release.yml's own read-back regex, so the two jobs agree on what
           # steady state is rather than each carrying its own idea of it.
           gh api "repos/$REPO/releases" --jq '[.[]|select(.draft)][0].tag_name' > "$RUNNER_TEMP/p5.tag"
