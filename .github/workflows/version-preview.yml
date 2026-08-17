@@ -48,4 +48,4 @@ permissions:
 
 jobs:
   verdict:
-    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@feat/zerox-promote-sigil
+    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v3.0.0-rc.3
