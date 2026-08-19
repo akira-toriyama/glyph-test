@@ -1,11 +1,8 @@
-// Live-fire fixture: this gate sits BELOW the declared floor (26.0) and must
-// be flagged as dead code.
+// Live-fire fixture, pass side: this gate sits ABOVE the declared floor
+// (26.0) — a legitimate new-API adoption gate the check must let through.
 func effect() {
-    if #available(macOS 14, *) {
-        modern()
-    } else {
-        legacyFallback()
+    if #available(macOS 27, *) {
+        adoptNewAPI()
     }
 }
-func modern() {}
-func legacyFallback() {}
+func adoptNewAPI() {}
