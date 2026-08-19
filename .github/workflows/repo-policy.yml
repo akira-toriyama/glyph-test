@@ -1,0 +1,14 @@
+# LIVE-FIRE COPY (t-5sas): the fleet canonical, pinned to the hub's rollout
+# branch instead of @v2 — this PR exists to watch the real gate fire both ways
+# and is closed without merging.
+name: repo-policy
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  repo-policy:
+    uses: akira-toriyama/.github/.github/workflows/repo-policy.yml@ci/repo-policy-gate
