@@ -1,7 +1,6 @@
-# DELIBERATELY AHEAD OF CANONICAL — commit-lint.yml's header carries the whole
-# argument. Short form: this pin names a v3 release CANDIDATE because only that
-# binary reads this repository's glyph.toml, fleet-sync skips glyph-test for the
-# duration (.github#194), and both revert at rollout (glyph t-6gt5).
+# Canonical standard file managed by fleet-sync (.github/workflows/fleet-sync.yml).
+# Do NOT edit per-repo copies — edit THIS file; fleet-sync propagates it to every
+# owned, non-fork, non-archived repo. Synced to: .github/workflows/version-preview.yml
 #
 # NOT named pr-verdict.yml, though that is what it calls: glyph is itself in the
 # fleet, and .github/workflows/pr-verdict.yml THERE is the reusable definition —
@@ -48,4 +47,4 @@ permissions:
 
 jobs:
   verdict:
-    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v3.0.0-rc.3
+    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v3.0.0
