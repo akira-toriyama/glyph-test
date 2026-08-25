@@ -679,7 +679,7 @@ jobs:
           # The positive control. Without it, an empty document satisfies the
           # absence above and the arm cannot fail for the reason it names.
           # shellcheck disable=SC2016
-          assert_line c-notes-control "$O.md" '- fix the demo crash `@tester`'
+          assert_line c-notes-control "$O.md" '- fix the demo crash @tester'
 
       - name: "(d) exclude_authors holds the version fold — as a counterfactual, at 1.x"
         if: ${{ !cancelled() }}
@@ -713,9 +713,13 @@ jobs:
           #
           # Note where the mention fence closes: `@dependabot` is fenced,
           # `\[bot]` is outside it and backslash-escaped. A grep written as
-          # '@dependabot\[bot\]' FAILS against correct output — the fence is
-          # the ratified defence against a release body pinging a stranger, so
-          # an assertion that expects a bare @name would encode a regression.
+          # '@dependabot\[bot\]' FAILS against correct output. Since glyph#198
+          # the author credit has ONE ratified exemption — a value that is
+          # exactly a GitHub-handle-shaped token goes out live (@tester,
+          # @akira-toriyama, asserted in (c)/(j)/(k) and the walk job) — but
+          # "dependabot[bot]" is not a handle, so the fence still holds here,
+          # and an assertion expecting a bare @dependabot[bot] would encode
+          # the regression the fence exists to stop.
           # shellcheck disable=SC2016
           assert_eq e-count "$(grep -cxF -- '- the bot claims a breaking change `@dependabot`\[bot]' "$O.md")" 2
 
@@ -812,7 +816,7 @@ jobs:
           assert_rc j-notes 0
           jq -r '[.sections[]|select(.title=="Features")|.lines[]][]' "$O.json" > "$O.features"
           # shellcheck disable=SC2016
-          assert_line j-template "$O.features" '- add the demo feature `@tester`'
+          assert_line j-template "$O.features" '- add the demo feature @tester'
           # The fallback, pinned to exactly one line: a commit no pattern
           # matched keeps its raw first line, and the author is still fenced.
           jq -r '[.sections[]|select(.title=="Dependencies")|.lines[]][]' "$O.json" > "$O.deps"
@@ -834,13 +838,13 @@ jobs:
           assert_rc k-notes 0
           jq -r '[.sections[]|select(.title=="Fixes")|.lines[]][]' "$O.json" > "$O.fixes"
           # shellcheck disable=SC2016
-          assert_line k-revert "$O.fixes" '- Revert ":sparkles:(demo)^ add the demo feature" `@tester`'
+          assert_line k-revert "$O.fixes" '- Revert ":sparkles:(demo)^ add the demo feature" @tester'
           # The regression this pattern exists for: capturing only the text
           # inside the quotes renders the reverted commit's own subject under
           # Fixes, which reads as that change being MADE. This repository
           # shipped exactly that in its v0.4.1 draft.
           # shellcheck disable=SC2016
-          assert_absent k-not-the-inner-subject "$O.fixes" '- add the demo feature `@tester`'
+          assert_absent k-not-the-inner-subject "$O.fixes" '- add the demo feature @tester'
 
       - name: "(l) the usage exits are 2, and say which usage"
         if: ${{ !cancelled() }}
@@ -972,7 +976,7 @@ jobs:
           assert_eq walk-order "$(jq -r '[.sections[].title]|join("|")' "$O.json")" 'Features|Fixes'
           jq -r '[.sections[]|select(.title=="Fixes")|.lines[]][]' "$O.json" > "$O.fixes"
           # shellcheck disable=SC2016
-          assert_line walk-presquash "$O.fixes" '- silence the SC2015 e2e-v2.yml never had to answer for (#52) `@akira-toriyama`'
+          assert_line walk-presquash "$O.fixes" '- silence the SC2015 e2e-v2.yml never had to answer for (#52) @akira-toriyama'
           # …and the same step proves the line could only have come from the
           # API. This subject is nowhere in the released branch's history: the
           # pull was squash-merged under a different sentence. Together, these
