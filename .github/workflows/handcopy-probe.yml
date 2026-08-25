@@ -67,7 +67,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: glyph/go.mod
-          cache-dependency-path: glyph/go.sum
+          # The build below compiles whatever ref the dispatcher named, and a
+          # dispatch runs in the DEFAULT BRANCH's cache scope — the same cache
+          # poisoning shape CodeQL flagged on e2e-v2 (run 32032336673). A cold
+          # module download costs seconds and this job runs on demand.
+          cache: false
 
       - name: Build the candidate binary
         working-directory: glyph
