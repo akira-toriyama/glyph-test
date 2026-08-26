@@ -1469,20 +1469,23 @@ jobs:
           assert_matches p5-steady-state "$RUNNER_TEMP/p5.tag" '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           git tag -d e2e-none || true
           test -z "$(git status --porcelain)"
-          # After the rollout step that moves this repository's own note.line
-          # to the optional span, the body below is where the preset fix is
-          # proven to have REACHED a consuming repo:
-          #   jq -r .body "$O.json" > body.md
-          #   assert_line   p5-control body.md '<a line with a pull number>'
-          #   assert_no_line_matching p5-no-empty-parens body.md ' \(\)( |$)'
-          # It is deliberately not asserted yet: this repository's glyph.toml
-          # may only take the span AFTER its pinned binary understands it. That
-          # order is NOT self-enforcing, which is the reason to write it down.
-          # Measured against the binary this repository pins today: a config
-          # carrying the new line loads clean and renders `$[ ()]` as literal
-          # text on every line, at exit 0, with no gate anywhere going red. The
-          # cost of getting the order wrong is a garbled release body nobody is
-          # told about — the same silently-wrong output the span exists to end.
+          # The span landing in THIS repository's own glyph.toml is the one
+          # place the preset fix is proven to have reached a consuming repo.
+          # (The ordering that used to hold this back — config may take the
+          # span only AFTER the pinned binary understands it, and a span-blind
+          # binary renders `$[ ()]` as literal text at exit 0 — was satisfied
+          # by the v3.0.0 pin move; t-gbfy.)
+          #
+          # The control is assert_matches, not assert_line: this body is the
+          # live rolling draft, so any exact line rots at the next release.
+          # (assert_matches on a body FILE claims nothing about a refusal —
+          # the stream rule it carries is about stderr.) The control needs one
+          # PR-merged commit inside the draft window to bite; a window of only
+          # direct pushes reds it, which reads as "the control currently
+          # proves nothing", not as the span regressing.
+          jq -r .body "$O.json" > "$RUNNER_TEMP/p5-body.md"
+          assert_matches p5-control "$RUNNER_TEMP/p5-body.md" ' \(#[0-9]+\) @'
+          assert_no_line_matching p5-no-empty-parens "$RUNNER_TEMP/p5-body.md" ' \(\)( |$)'
 
   # ── tier 5 ────────────────────────────────────────────────────────────────
   # The distribution layer, which no product test can see.
@@ -1491,13 +1494,14 @@ jobs:
   # version. Same family as the pr-verdict.yml overwrite — a mistake that lives
   # entirely in the plumbing.
   #
-  # THIS JOB IS RED TODAY, AND THAT IS THE FINDING. Measured 2026-08-17: five
-  # references at two distinct versions — three callers at v3.0.0-rc.3 and
-  # pin-probe.yml stranded at v2.0.0 in BOTH its `uses:` and its `version:`,
-  # because the commit that moved the callers moved only the callers.
-  # pin-probe.yml is the file whose entire purpose is detecting pin drift, it
-  # has zero workflow runs ever, and so nothing has ever reported this. The fix
-  # is to move pin-probe's pin, not to loosen the check.
+  # This job has caught real drift twice, and both times the fix was to move
+  # the stranded pin, not to loosen the check. 2026-08-17: three callers at
+  # v3.0.0-rc.3 and pin-probe.yml stranded at v2.0.0 in BOTH its `uses:` and
+  # its `version:`, because the commit that moved the callers moved only the
+  # callers. 2026-08-26 (run 32916999943): the v3.0.0 pin rewrite moved
+  # pin-probe's `uses:` but left `version: v3.0.0-rc.3` — the hub's scanner
+  # prefix-matched the value's release shape and reported no drift, so this
+  # job was the only red anywhere (fixed in .github#206 / glyph-test#75).
   #
   # A `uses:`-only grep would miss it, because half the drift lives in a
   # `version:` input — which is also why the scan strips comments before it

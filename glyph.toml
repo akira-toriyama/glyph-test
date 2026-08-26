@@ -61,7 +61,7 @@ skip = true
 # One line per commit. $xxx reads the winning pattern's named groups;
 # $pr / $author / $hash are built in. A commit no pattern matches (bots)
 # falls back to its raw first line.
-line = '- $subject ($pr) @$author'
+line = '- $subject$[ ($pr)] @$author'
 
 # Keep an "Unreleased" placeholder draft alive across merges that do not
 # move the version (false = no draft until something does).
