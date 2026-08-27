@@ -17,4 +17,4 @@ permissions:
 
 jobs:
   repo-policy:
-    uses: akira-toriyama/.github/.github/workflows/repo-policy.yml@v2
+    uses: akira-toriyama/.github/.github/workflows/repo-policy.yml@ec5cbdadd649b4b3184e627d204aca6d1a630b6a
