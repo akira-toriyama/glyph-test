@@ -679,7 +679,7 @@ jobs:
           # The positive control. Without it, an empty document satisfies the
           # absence above and the arm cannot fail for the reason it names.
           # shellcheck disable=SC2016
-          assert_line c-notes-control "$O.md" '- fix the demo crash @tester'
+          assert_line c-notes-control "$O.md" '- :bug:(demo)~ fix the demo crash @tester'
 
       - name: "(d) exclude_authors holds the version fold — as a counterfactual, at 1.x"
         if: ${{ !cancelled() }}
@@ -721,7 +721,7 @@ jobs:
           # and an assertion expecting a bare @dependabot[bot] would encode
           # the regression the fence exists to stop.
           # shellcheck disable=SC2016
-          assert_eq e-count "$(grep -cxF -- '- the bot claims a breaking change `@dependabot`\[bot]' "$O.md")" 2
+          assert_eq e-count "$(grep -cxF -- '- :boom:(deps)! the bot claims a breaking change `@dependabot`\[bot]' "$O.md")" 2
 
       - name: "(f) judged-nothing is reported, and says WHICH nothing"
         if: ${{ !cancelled() }}
@@ -815,18 +815,25 @@ jobs:
           O="$RUNNER_TEMP/j"; run_glyph "$O.json" "$O.err" notes --range v0.4.2..br-notes --json
           assert_rc j-notes 0
           jq -r '[.sections[]|select(.title=="Features")|.lines[]][]' "$O.json" > "$O.features"
+          # The preset's subject group is the WHOLE first line (glyph #206,
+          # ratified 2026-09-07): the gitmoji, scope and sigil ride into the
+          # body, and GitHub draws the gemoji there.
           # shellcheck disable=SC2016
-          assert_line j-template "$O.features" '- add the demo feature @tester'
+          assert_line j-template "$O.features" '- :sparkles:(demo)^ add the demo feature @tester'
           # The fallback, pinned to exactly one line: a commit no pattern
           # matched keeps its raw first line, and the author is still fenced.
           jq -r '[.sections[]|select(.title=="Dependencies")|.lines[]][]' "$O.json" > "$O.deps"
           assert_eq j-deps-count "$(wc -l < "$O.deps" | tr -d ' ')" 1
           # shellcheck disable=SC2016
           assert_line j-fallback "$O.deps" '- build(deps): bump golang.org/x/net from 0.1 to 0.2 `@dependabot`\[bot]'
-          # Nothing anywhere renders as its raw gitmoji subject: that is what a
-          # template silently not being applied looks like.
+          # No matched line renders as the BARE subject — `- add the demo
+          # feature` is the shape the group used to stop at, and a line in
+          # that shape means a preset whose subject group has slid back to
+          # the text after the sigil (the revert line is the one legitimate
+          # non-gitmoji opener, so the guard names the fixture's subjects
+          # rather than a leading `:`).
           jq -r '.sections[].lines[]' "$O.json" > "$O.all"
-          assert_no_line_matching j-no-raw "$O.all" '^- :'
+          assert_no_line_matching j-no-bare-subject "$O.all" '^- (fix the demo crash|add the demo feature|break the demo API)'
 
       - name: "(k) a revert reads as a revert, not as the change it undid"
         if: ${{ !cancelled() }}
