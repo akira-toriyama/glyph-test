@@ -28,3 +28,5 @@ squash-safe な rolling draft release → 人間の Publish、の一巡を回す
 
 One PR per season. The `:sparkles:` commits drive minor bumps; typo fixes
 (`:pencil2:`) drive patches; docs like this line drive nothing.
+
+canary v3.2.0: 2026-09-09T03:39:23Z
