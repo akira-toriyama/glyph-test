@@ -540,7 +540,11 @@ jobs:
           rm -rf "$F"; mkdir -p "$F"; cd "$F"
           git init -q -b main
           git config user.name tester
-          git config user.email tester@example.invalid
+          # GitHub's noreply address, not a personal one: since glyph#226 a
+          # credit goes live only for a LOGIN, and this address is the one
+          # place git itself carries one — the shape every fleet commit has.
+          # (m) below holds the other half, from a personal address.
+          git config user.email 1+tester@users.noreply.github.com
           git config commit.gpgsign false
           BOT='dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'
 
@@ -617,6 +621,11 @@ jobs:
           c ':boom:(demo)! break the demo API'
           c 'Revert ":sparkles:(demo)^ add the demo feature"'
           c 'build(deps): bump golang.org/x/net from 0.1 to 0.2' "$BOT"
+
+          # (m) one commit from a PERSONAL address: the author is credited by
+          #     name and paged by nobody (glyph#226).
+          git checkout -q -b br-stranger v0.4.2
+          c ':bug:(demo)~ fix the parser for a stranger' 'Saleh <saleh@example.invalid>'
 
           git checkout -q main
           git log --all --format='%h %an | %s'
@@ -711,17 +720,17 @@ jobs:
           # Dependencies (the author axis). A commit may appear in several
           # sections, and that is the ratified behaviour, not a bug.
           #
-          # Note where the mention fence closes: `@dependabot` is fenced,
-          # `\[bot]` is outside it and backslash-escaped. A grep written as
-          # '@dependabot\[bot\]' FAILS against correct output. Since glyph#198
-          # the author credit has ONE ratified exemption — a value that is
-          # exactly a GitHub-handle-shaped token goes out live (@tester,
-          # @akira-toriyama, asserted in (c)/(j)/(k) and the walk job) — but
-          # "dependabot[bot]" is not a handle, so the fence still holds here,
-          # and an assertion expecting a bare @dependabot[bot] would encode
-          # the regression the fence exists to stop.
-          # shellcheck disable=SC2016
-          assert_eq e-count "$(grep -cxF -- '- :boom:(deps)! the bot claims a breaking change `@dependabot`\[bot]' "$O.md")" 2
+          # Since glyph#226 the author credit goes live on ONE condition — a
+          # login was established (here: the noreply address) and it is a
+          # GitHub-handle-shaped token (@tester, @akira-toriyama, asserted in
+          # (c)/(j)/(k) and the walk job). "dependabot[bot]" fails the shape
+          # gate on its own login, so it renders as plain prose with the
+          # at-sign dropped and the brackets escaped: `dependabot\[bot]`, not
+          # the fenced `@dependabot`\[bot] of v3.3.0 and not a live
+          # @dependabot[bot]. A grep written as 'dependabot\[bot\]' FAILS
+          # against correct output.
+          assert_eq e-count "$(grep -cxF -- '- :boom:(deps)! the bot claims a breaking change dependabot\[bot]' "$O.md")" 2
+          assert_absent e-not-paged "$O.md" '@dependabot'
 
       - name: "(f) judged-nothing is reported, and says WHICH nothing"
         if: ${{ !cancelled() }}
@@ -821,11 +830,11 @@ jobs:
           # shellcheck disable=SC2016
           assert_line j-template "$O.features" '- :sparkles:(demo)^ add the demo feature @tester'
           # The fallback, pinned to exactly one line: a commit no pattern
-          # matched keeps its raw first line, and the author is still fenced.
+          # matched keeps its raw first line, and the bot is credited as
+          # prose — its login fails the handle gate (see (e)).
           jq -r '[.sections[]|select(.title=="Dependencies")|.lines[]][]' "$O.json" > "$O.deps"
           assert_eq j-deps-count "$(wc -l < "$O.deps" | tr -d ' ')" 1
-          # shellcheck disable=SC2016
-          assert_line j-fallback "$O.deps" '- build(deps): bump golang.org/x/net from 0.1 to 0.2 `@dependabot`\[bot]'
+          assert_line j-fallback "$O.deps" '- build(deps): bump golang.org/x/net from 0.1 to 0.2 dependabot\[bot]'
           # No matched line renders as the BARE subject — `- add the demo
           # feature` is the shape the group used to stop at, and a line in
           # that shape means a preset whose subject group has slid back to
@@ -874,6 +883,23 @@ jobs:
           assert_rc l-current 2
           assert_envelope l-current "$O.err" 2
           assert_says l-current "$O.err" 'is not a plain semver version'
+
+      - name: "(m) a credit goes live only for a login — a personal address is credited by name and pages no one"
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
+          O="$RUNNER_TEMP/m"; run_glyph "$O.md" "$O.err" notes --range v0.4.2..br-stranger
+          assert_rc m-notes 0
+          # Both halves, or it proves nothing: (c)/(j)/(k) hold `@tester` live
+          # from the fixture's noreply address; this holds the name from a
+          # personal address as plain prose, at-sign dropped — neither live
+          # nor fenced. `Saleh` is github.com/larrasket's display name, so a
+          # live `@Saleh` pages a stranger and a fenced one still shows the
+          # stranger's handle (glyph#226).
+          assert_line m-prose "$O.md" '- :bug:(demo)~ fix the parser for a stranger Saleh'
+          assert_absent m-not-paged "$O.md" '@Saleh'
 
   # ── tier 2 ────────────────────────────────────────────────────────────────
   # ONE frozen window, for the two assertions only GitHub can make.
