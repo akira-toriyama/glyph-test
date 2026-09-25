@@ -2,18 +2,20 @@
 #
 # Why this file exists. `release.yml` next door installs a RELEASED glyph
 # through the composite action, so it can only ever fire the gates that are in
-# the last tag. The gate this range most needs to prove — a walk that could not
-# read its range refuses to hand down a verdict (glyph #86, exit 4) — has never
-# been in a tag, and the next tag glyph cuts is v1.0.0, which is not due yet.
-# Waiting for it means the fleet's most destructive code path stays verified
-# only inside glyph's own httptest fakes.
+# the tag it pins. The gate this range proves — a walk that could not read its
+# range refuses to hand down a verdict (glyph #86, exit 4) — shipped in glyph
+# v1.0.0; until that tag was cut, this job was the only place the fleet's most
+# destructive code path met the real GitHub API instead of glyph's own httptest
+# fakes. It stays for the same reason after: a candidate ref is fired here
+# BEFORE it is tagged, and the red half below stays reproducible at a frozen
+# coordinate.
 #
 # So this job builds glyph FROM SOURCE at whatever ref you name and points it at
 # the real GitHub API. It deliberately does NOT install through the composite
-# action: that path (checksum + provenance + the pinned `version:` input) is
-# unchanged since v0.12.0, `release.yml` exercises it on every push, and adding
-# a fifth `uses: akira-toriyama/glyph/...` pin site here would corrupt the
-# rewriter's live-fire range (see pin-probe.yml).
+# action: `release.yml` exercises that path (checksum + provenance + the pinned
+# `version:` input) on every push, and adding another
+# `uses: akira-toriyama/glyph/...` pin site here would corrupt the rewriter's
+# live-fire range (see pin-probe.yml).
 #
 # Fired both ways, which is the whole point (fleet-change-policy.md, "Stage 2
 # means both halves"):
