@@ -1,8 +1,12 @@
 name: token-publish
 
-# Drill (glyph t-7404): publish a draft release using the workflow's own
-# GITHUB_TOKEN, so tag-probe can show whether a GITHUB_TOKEN publish creates a
-# tag that starts further workflow runs. Manual only.
+# Publish a draft release with the workflow's own GITHUB_TOKEN. Manual only.
+#
+# Born as a drill (glyph t-7404) beside tag-probe.yml, which listened on
+# push:tags / create / release to see whether the tag such a publish creates
+# starts any workflow. Answered 2026-09-25 on v2.0.0: the tag appears, and
+# nothing fires — glyph docs/DESIGN.md §4 records it. The probe is gone; this
+# stays because the rollout runbook publishes this repository's drafts with it.
 
 on:
   workflow_dispatch:
