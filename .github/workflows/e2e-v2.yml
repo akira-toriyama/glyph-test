@@ -768,10 +768,11 @@ jobs:
           # step greens when the fixture's config is broken, when a pattern was
           # mistyped, and when the offending commits were never created.
           assert_lacks g-bump "$O.err" 'glyph.toml:'
-          # Deliberately NOT asserted: the "N configured patterns" count. The
-          # gemoji preset writes 4 while this repository's own committed config
-          # carries 5 (the hand-added v1-acceptance block), so that number says
-          # which config was loaded, not which mechanism fired.
+          # Deliberately NOT asserted: the "N configured patterns" count. It
+          # says which config was loaded, not which mechanism fired — and since
+          # this repository's committed config went back to being the gemoji
+          # preset (the hand-added v1-acceptance block is gone) both carry 4,
+          # so the number would tell a reader nothing either way.
           O="$RUNNER_TEMP/g1"; run_glyph "$O.md" "$O.err" notes --range v0.4.2..br-unmatched
           assert_rc g-notes 0
           O="$RUNNER_TEMP/g2"; run_glyph "$O.out" "$O.err" lint --range v0.4.2..br-unmatched
