@@ -63,12 +63,6 @@ template = '''
 pattern = '^(?P<subject>:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]) .+)'
 
 [[patterns]]
-# v1 acceptance (this sandbox's pre-v2 history): a gitmoji subject with no
-# sigil folds as none — lint passes, the version does not move.
-pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))? (?P<subject>.+)'
-semver_sigil = '='
-
-[[patterns]]
 # raw `git revert`. The subject group takes the WHOLE line, quotes and all,
 # so a release body says a revert happened: capturing only the text inside the
 # quotes renders the reverted commit's own subject under Fixes, which reads as
