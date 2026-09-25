@@ -1,9 +1,9 @@
 # glyph-test
 
-Throwaway end-to-end demo of [glyph](https://github.com/akira-toriyama/glyph) —
-the gitmoji-driven commit-lint / semver / release-notes engine.
+Permanent live-fire harness for [glyph](https://github.com/akira-toriyama/glyph) —
+the sigil-driven commit-lint / semver / release-notes engine.
 
-This repo exists only to watch the whole loop run for real:
+This repository exists to watch the whole loop run for real:
 
 1. **PR-time lint** — `commit-lint.yml` calls glyph's reusable `lint.yml`;
    a malformed commit fails the check with a SHA-named annotation.
@@ -15,14 +15,12 @@ This repo exists only to watch the whole loop run for real:
    the UI (or via `gh release edit --draft=false`); after publishing, the
    next merge rolls a fresh draft above the published floor.
 
+Real pull requests, releases and tags here are fair game. History and tags
+become frozen coordinates once an end-to-end workflow (`e2e-v2.yml`,
+`livefire.yml`) references them, and are never rewritten.
+
 The "app" here is [haiku.md](haiku.md). No binaries are built — the
 release workflow runs glyph's verdict + draft path only.
-
----（和訳）
-
-glyph（gitmoji 駆動の commit-lint / semver / release-notes エンジン）の
-端から端までを実際に動かして見るための使い捨てデモ repo。PR-time lint →
-squash-safe な rolling draft release → 人間の Publish、の一巡を回す。
 
 ## How the collection grows
 
