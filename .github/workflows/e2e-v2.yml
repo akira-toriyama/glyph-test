@@ -37,22 +37,39 @@
 # reject the shape that fooled the last one.
 #
 # Fired more than one way, which is the point (fleet-change-policy.md, "Stage 2
-# means both halves"). All three rungs below were measured on 2026-08-17 by
-# running these step scripts against binaries built at each ref:
+# means both halves"). The three rungs below were measured by running these step
+# scripts against binaries built at each ref — on 2026-08-17 except where a
+# later date is named inline, and a claim here is either dated or absent:
 #
-#   glyph-ref: main         -> `grammar` (12 arms, 67 assertions), `walk`,
-#                              `refusals` and `drafts` are GREEN.
-#                              `distribution` is RED until this repository's
-#                              pins move — its header says why, and the
-#                              redness is the finding, not a bug in the job.
-#   glyph-ref: v3.0.0-rc.3  -> the release this repository is currently PINNED
-#                              at, and the sharp control: `grammar` reds on
-#                              exactly four arms — (c), (e), (j), (k) — the
-#                              four whose expected note lines depend on the
-#                              optional span in `note.line`. The other eight
-#                              stay green. A control that reds everything
-#                              tells you a binary changed; this one tells you
-#                              WHAT changed.
+#   glyph-ref: main         -> `grammar` (13 arms, 73 `assert_*` calls), `walk`
+#                              and `drafts` are GREEN, and `distribution` is
+#                              GREEN too since this repository's pins reached
+#                              v4.0.0 — 5 sites, one version, measured
+#                              2026-09-26 by running the tier's own scan. It
+#                              was RED while those pins were split, and that
+#                              redness was the finding, not a bug in the job.
+#                              `refusals` arm (a) is RED until the v2.0.1 draft
+#                              is published: it walks `below:<latest
+#                              published>`, which resolves to v1.0.0 under the
+#                              v2.0.0 floor, and that range holds the nine
+#                              sigil-less squash commits the retired
+#                              v1-acceptance window used to accept — so it
+#                              exits 3 on the wedge at f83dbd0 instead of 4 on
+#                              the floor (measured 2026-09-26). Publishing puts
+#                              the base at v2.0.0, past all nine. Note what the
+#                              arm then needs: the fold from that base must
+#                              land AT the published version, so whatever sits
+#                              above the floor has to fold to patch or none,
+#                              while `walk`'s live arm needs a fold that MOVES.
+#   glyph-ref: v3.0.0-rc.3  -> the sharp control: `grammar` reds on exactly the
+#                              arms whose expected note lines depend on the
+#                              optional span in `note.line` — (c), (e), (j) and
+#                              (k) when this rung was measured on 2026-08-17,
+#                              at 12 arms — and the rest stay green. A control
+#                              that reds everything tells you a binary changed;
+#                              this one tells you WHAT changed. The ref is a
+#                              dispatch input, not a pin: this repository's own
+#                              pins have been v4.0.0 since 2026-09-25.
 #   glyph-ref: v2.0.0       -> every arm reds, at the fixture step: `init
 #                              --gemoji` does not exist before v3, so nothing
 #                              downstream ever runs. Coarse, and still the
