@@ -24,5 +24,7 @@ release workflow runs glyph's verdict + draft path only.
 
 ## How the collection grows
 
-One PR per season. The `:sparkles:` commits drive minor bumps; typo fixes
-(`:pencil2:`) drive patches; docs like this line drive nothing.
+One PR per season. The sigil is what moves the version — `^` a minor, `~` a
+patch, `=` nothing — whatever gemoji it follows: the gemoji is for the reader
+and decides nothing. A docs commit like the one that wrote this line carries
+`=`.
