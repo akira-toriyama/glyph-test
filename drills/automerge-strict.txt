@@ -1,0 +1,1 @@
+strict arm: pull armed while BEHIND under required_status_checks.strict=true (projects e-xj9m)
