@@ -32,4 +32,6 @@ permissions:
 
 jobs:
   lint:
-    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v4.1.1
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@c1bd20d749974cf687864379ff2333b465cf41c9
+    with:
+      glyph-version: v4.1.1
