@@ -1,0 +1,35 @@
+# Live fire for glyph t-kef0 (the `runner` input on lint.yml / pr-verdict.yml).
+# Never merged: the pull request carrying this file is the probe.
+name: runner-input-probe
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint-default:
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@ecc3d694a00b095dadbd5aa74dae8c97cb43a3b0
+    with:
+      glyph-version: v4.2.0
+  lint-arm:
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@ecc3d694a00b095dadbd5aa74dae8c97cb43a3b0
+    with:
+      glyph-version: v4.2.0
+      runner: ubuntu-24.04-arm
+  lint-unset-variable:
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@ecc3d694a00b095dadbd5aa74dae8c97cb43a3b0
+    with:
+      glyph-version: v4.2.0
+      runner: ${{ vars.T_KEF0_NEVER_SET }}
+  verdict-default:
+    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@ecc3d694a00b095dadbd5aa74dae8c97cb43a3b0
+    with:
+      glyph-version: v4.2.0
+  verdict-arm:
+    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@ecc3d694a00b095dadbd5aa74dae8c97cb43a3b0
+    with:
+      glyph-version: v4.2.0
+      runner: ubuntu-24.04-arm
