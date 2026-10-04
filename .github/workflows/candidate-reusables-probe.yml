@@ -1,0 +1,36 @@
+# Live fire for the glyph v4.3.0 candidate (t-s3e6): lint.yml and pr-verdict.yml at the
+# commit about to be tagged, with the shipped v4.2.0 binary. Never merged: the pull
+# request carrying this file is the probe.
+name: candidate-reusables-probe
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint-default:
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@5859178395b10aa43ca6847aa4208b1f8cd0f01a
+    with:
+      glyph-version: v4.2.0
+  lint-arm:
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@5859178395b10aa43ca6847aa4208b1f8cd0f01a
+    with:
+      glyph-version: v4.2.0
+      runner: ubuntu-24.04-arm
+  lint-unset-variable:
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@5859178395b10aa43ca6847aa4208b1f8cd0f01a
+    with:
+      glyph-version: v4.2.0
+      runner: ${{ vars.T_S3E6_NEVER_SET }}
+  verdict-default:
+    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@5859178395b10aa43ca6847aa4208b1f8cd0f01a
+    with:
+      glyph-version: v4.2.0
+  verdict-arm:
+    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@5859178395b10aa43ca6847aa4208b1f8cd0f01a
+    with:
+      glyph-version: v4.2.0
+      runner: ubuntu-24.04-arm
