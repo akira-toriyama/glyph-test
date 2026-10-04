@@ -13,3 +13,5 @@
   `walk` live-release and `refusals` arm (c)).
 
 This commit is the releasable change past v2.0.1 those arms read.
+
+- live check: the fleet pin at glyph v4.3.0 refuses a sigil-less subject and passes the reworded one (t-s3e6)
