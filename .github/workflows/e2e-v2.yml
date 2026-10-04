@@ -41,7 +41,7 @@
 # scripts against binaries built at each ref — on 2026-08-17 except where a
 # later date is named inline, and a claim here is either dated or absent:
 #
-#   glyph-ref: main         -> `grammar` (13 arms, 73 `assert_*` calls), `walk`
+#   glyph-ref: main         -> `grammar` (13 arms, 84 `assert_*` calls), `walk`
 #                              and `drafts` are GREEN, and `distribution` is
 #                              GREEN too since this repository's pins reached
 #                              v4.0.0 — 5 sites, one version, measured
@@ -488,7 +488,8 @@ jobs:
   #
   # Goes red if: the 0.x clamp stops clamping, `%` stops promoting or starts
   # depending on commit order, a `skip = true` pattern stops being total across
-  # lint/bump/notes, `exclude_authors` leaks into notes or stops holding lint
+  # lint/bump/notes, an `unlandable` claim stops refusing on lint and bump,
+  # `exclude_authors` leaks into notes or stops holding lint
   # and bump, an unmatched commit stops being a refusal, section order drifts,
   # the note template stops being applied (or starts being applied to a commit
   # no pattern matched), a revert renders as the change it undoes, or any of
@@ -502,7 +503,9 @@ jobs:
   # the preset carries the optional span `$[ ($pr)] `. Under `--range` every
   # commit's `$pr` is empty, so a preset that still writes a bare ` ($pr)`
   # renders ` () ` and arms (c), (e), (j) and (k) go red. That is the fix
-  # landing, not a fixture bug.
+  # landing, not a fixture bug. Arm (c) also assumes the preset claims git's
+  # `fixup!` as unlandable (glyph t-mfny; the presets skipped it before), so a
+  # ref older than that reds (c) at c-fixup-lint, 0 where 3 is wanted.
   grammar:
     needs: build
     runs-on: ubuntu-latest
@@ -603,8 +606,9 @@ jobs:
           c ':bug:(demo)~ fix the demo crash'
           c ':sparkles:(demo)^ add the demo feature'
 
-          # (c) five commits that count, one real merge and one fixup that
-          #     must not. The merge is `--no-ff` with an explicit subject so
+          # (c) five commits that count, one real merge the skip pattern
+          #     drops, and one unsquashed fixup! the preset claims as
+          #     unlandable. The merge is `--no-ff` with an explicit subject so
           #     the skip pattern is matched by the real thing rather than by a
           #     hand-written message that happens to start with "Merge ".
           git checkout -q -b br-skips v0.4.2
@@ -685,20 +689,43 @@ jobs:
           assert_rc b-order 0
           assert_eq b-order-next "$(cat "$O.json")" v1.0.0
 
-      - name: "(c) a skipped commit is skipped on all THREE surfaces, over one range"
+      - name: "(c) a skipped merge is skipped on all THREE surfaces, and an unsquashed fixup! is refused on lint and bump"
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           # shellcheck source=/dev/null
           . "$ASSERT"; cd "$RUNNER_TEMP/fixture"
-          O="$RUNNER_TEMP/c0"; run_glyph "$O.out" "$O.err" lint --range v0.4.2..br-skips
+          # The skip half, over the range that ends at the merge (br-skips~1):
+          # the fixup! on top is refused, not skipped, so a range holding it
+          # cannot speak for the skip.
+          O="$RUNNER_TEMP/c0"; run_glyph "$O.out" "$O.err" lint --range v0.4.2..br-skips~1
           assert_rc c-lint 0
-          O="$RUNNER_TEMP/c1"; run_glyph "$O.json" "$O.err" bump --range v0.4.2..br-skips --json
+          O="$RUNNER_TEMP/c1"; run_glyph "$O.json" "$O.err" bump --range v0.4.2..br-skips~1 --json
           assert_rc c-bump 0
           assert_eq c-bump-count "$(jq -r '.commits|length' "$O.json")" 5
           jq -r '.commits[].subject' "$O.json" > "$O.subjects"
           assert_absent c-bump-merge "$O.subjects" "Merge branch 'topic' into main"
-          assert_absent c-bump-fixup "$O.subjects" 'fixup!'
+          # The claim half: every gate that judges an existing commit refuses
+          # an unsquashed fixup! — exit 3, nothing on stdout, and the claim's
+          # reason in the envelope. lint names the commit in details; bump
+          # carries the reason in .error.message. 'glyph.toml:' absent keeps a
+          # config that failed to load from passing as the claim.
+          O="$RUNNER_TEMP/c3"; run_glyph "$O.out" "$O.err" lint --range v0.4.2..br-skips
+          assert_rc c-fixup-lint 3
+          assert_envelope c-fixup-lint "$O.err" 3
+          assert_lacks c-fixup-lint "$O.err" 'glyph.toml:'
+          assert_jq c-fixup-lint "$O.err" '.error.details|length==1'
+          assert_jq c-fixup-lint "$O.err" '.error.details[0].subject=="fixup! :bug:(demo)~ fix the demo crash"'
+          assert_jq c-fixup-lint "$O.err" '.error.details[0].detail|contains("marks this message unlandable")'
+          O="$RUNNER_TEMP/c4"; run_glyph "$O.json" "$O.err" bump --range v0.4.2..br-skips --json
+          assert_rc c-fixup-bump 3
+          assert_empty_stdout c-fixup-bump "$O.json"
+          assert_envelope c-fixup-bump "$O.err" 3
+          assert_says c-fixup-bump "$O.err" 'marks this message unlandable'
+          assert_says c-fixup-bump "$O.err" 'git rebase --autosquash'
+          assert_says c-fixup-bump "$O.err" 'refusing to version the range'
+          # notes renders what landed and refuses nothing: the merge and the
+          # fixup! are in no section.
           O="$RUNNER_TEMP/c2"; run_glyph "$O.md" "$O.err" notes --range v0.4.2..br-skips
           assert_rc c-notes 0
           assert_absent c-notes-fixup "$O.md" 'fixup!'
