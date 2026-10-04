@@ -11,25 +11,25 @@ permissions:
 
 jobs:
   lint-default:
-    uses: akira-toriyama/glyph/.github/workflows/lint.yml@ecc3d694a00b095dadbd5aa74dae8c97cb43a3b0
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@8ca11a00eb9dd1134c080d51f5b1d5b7c901a8f3
     with:
       glyph-version: v4.2.0
   lint-arm:
-    uses: akira-toriyama/glyph/.github/workflows/lint.yml@ecc3d694a00b095dadbd5aa74dae8c97cb43a3b0
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@8ca11a00eb9dd1134c080d51f5b1d5b7c901a8f3
     with:
       glyph-version: v4.2.0
       runner: ubuntu-24.04-arm
   lint-unset-variable:
-    uses: akira-toriyama/glyph/.github/workflows/lint.yml@ecc3d694a00b095dadbd5aa74dae8c97cb43a3b0
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@8ca11a00eb9dd1134c080d51f5b1d5b7c901a8f3
     with:
       glyph-version: v4.2.0
       runner: ${{ vars.T_KEF0_NEVER_SET }}
   verdict-default:
-    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@ecc3d694a00b095dadbd5aa74dae8c97cb43a3b0
+    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@8ca11a00eb9dd1134c080d51f5b1d5b7c901a8f3
     with:
       glyph-version: v4.2.0
   verdict-arm:
-    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@ecc3d694a00b095dadbd5aa74dae8c97cb43a3b0
+    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@8ca11a00eb9dd1134c080d51f5b1d5b7c901a8f3
     with:
       glyph-version: v4.2.0
       runner: ubuntu-24.04-arm
