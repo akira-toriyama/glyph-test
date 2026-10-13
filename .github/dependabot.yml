@@ -59,5 +59,3 @@ updates:
     commit-message:
       # Trailing space is load-bearing — see the base fleet/dependabot.yml.
       prefix: ":arrow_up:(deps) "
-
-# nudge: a configuration change makes Dependabot run its checks now (t-t33h live fire); reverted in the next commit so the fleet-synced bytes stay canonical
