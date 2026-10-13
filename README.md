@@ -3,6 +3,13 @@
 Permanent live-fire harness for [glyph](https://github.com/akira-toriyama/glyph) —
 the sigil-driven commit-lint / semver / release-notes engine.
 
+It is also the fleet hub's live-fire harness for
+[fleet-repin](https://github.com/akira-toriyama/.github/blob/main/.github/workflows/fleet-repin.yml):
+`go.mod` carries one real dependency and `flake.nix` pins a `buildGoModule`
+`vendorHash`, so every dependabot gomod bump here has the stale-hash problem
+fleet-repin fixes (`scripts/repin-vendorhash.sh` is the canonical fleet-sync
+ships to every repo with a root `flake.nix` + `go.sum`).
+
 This repository exists to watch the whole loop run for real:
 
 1. **PR-time lint** — `commit-lint.yml` calls glyph's reusable `lint.yml`;
