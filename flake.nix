@@ -18,7 +18,7 @@
           pname = "glyph-test";
           version = "0.0.0";
           src = ./.;
-          vendorHash = "sha256-/B76UBP2FC3GPIioq+TME8So7yRmaXWDX0Qc+8fieKs=";
+          vendorHash = "sha256-fxxp7ECuMMmLw7L5/lPi7lfmJM2p+Te9AqXm5Xed3G0=";
         };
       });
 }
