@@ -1,7 +1,7 @@
 module github.com/akira-toriyama/glyph-test
 
-go 1.25.0
+go 1.26.0
 
-require golang.org/x/term v0.44.0
+require golang.org/x/term v0.46.0
 
-require golang.org/x/sys v0.46.0 // indirect
+require golang.org/x/sys v0.48.0 // indirect
