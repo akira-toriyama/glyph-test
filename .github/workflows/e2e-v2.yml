@@ -1253,7 +1253,6 @@ jobs:
           cat > "$RUNNER_TEMP/wedge/glyph.toml" <<'TOML'
           schema = 1
           [commit]
-          style = "gemoji"
           template = '''
           <:code:>[(scope)]<semver_sigil> <subject>
           '''
@@ -1285,9 +1284,11 @@ jobs:
           # The pull NUMBER, so a change in this repository's merge settings
           # fails loudly instead of quietly asserting some other shape.
           assert_says d-wedge "$O.err" "#$pr"
-          # This is the fail-fast arm, and carrying no details key is what
-          # distinguishes it from the accumulating --range refusal in tier 1.
-          assert_jq d-wedge "$O.err" '.error|has("details")|not'
+          # The release walk reads the whole range and names every refused
+          # commit in details (glyph#274, DESIGN §4), the shape tier 1's --range
+          # refusal has; a details list that came back empty or lost its keys
+          # would leave the sentence above as the only witness.
+          assert_jq d-wedge "$O.err" '.error.details | length > 0 and all(.[]; has("sha") and has("detail"))'
           cd "$GITHUB_WORKSPACE/repo"
           git worktree remove --force "$RUNNER_TEMP/wedge"
           git tag -d e2e-wedge
