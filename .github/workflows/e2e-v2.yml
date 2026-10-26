@@ -1021,6 +1021,18 @@ jobs:
           assert_eq worktree-toplevel \
             "$(cd "$RUNNER_TEMP/w" && git rev-parse --show-toplevel)" \
             "$(cd "$RUNNER_TEMP/w" && pwd -P)"
+          # The coordinate freezes the history and the grammar, not the schema
+          # the binary under test reads them with: v0.3.0's glyph.toml still
+          # carries `[commit] style`, a key no glyph ever read and glyph v6
+          # refuses as unknown (exit 2, before any walk). The one-line deletion
+          # every fleet repository made under the v5 pins is made here too, on
+          # the worktree's own copy: the patterns the tier judges with are
+          # untouched. The line is counted before and after, so a frozen file
+          # that stopped carrying it, or a deletion that stopped working, is a
+          # red with a name rather than a tier passing for the wrong reason.
+          assert_eq frozen-style-lines "$(grep -c '^style = ' "$RUNNER_TEMP/w/glyph.toml" || true)" 1
+          sed -i '/^style = /d' "$RUNNER_TEMP/w/glyph.toml"
+          assert_eq worktree-style-lines "$(grep -c '^style = ' "$RUNNER_TEMP/w/glyph.toml" || true)" 0
 
       - name: The 0.x fold, at the coordinate the question was asked about
         if: ${{ !cancelled() }}
