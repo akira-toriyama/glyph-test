@@ -61,6 +61,10 @@
 #                              land AT the published version, so whatever sits
 #                              above the floor has to fold to patch or none,
 #                              while `walk`'s live arm needs a fold that MOVES.
+#                              `release-notes` is GREEN: the composite action
+#                              at the ref renders below v2.0.1 and ships the
+#                              refused v2.0.0 range as a placeholder (status 3)
+#                              — measured 2026-10-27, the tier's first run.
 #   glyph-ref: v3.0.0-rc.3  -> the sharp control: `grammar` reds on exactly the
 #                              arms whose expected note lines depend on the
 #                              optional span in `note.line` — (c), (e), (j) and
@@ -1598,6 +1602,91 @@ jobs:
   # `version:` input — which is also why the scan strips comments before it
   # looks: an input pattern that loose matches PROSE, and the first draft of
   # this job counted the paragraph you are reading as a sixth pin site.
+  # ── release-notes action ─────────────────────────────────────────────────
+  # Goes red if: the composite action at the dispatched ref does not load, does
+  # not run the binary it is handed, or does not answer two frozen coordinates
+  # the way its rule says. (a) `below:v2.0.1` walks v2.0.0..HEAD and renders
+  # (exit 0 — measured 2026-10-27 at glyph 787610e on this repository's main);
+  # (b) `below:v2.0.0` walks v1.0.0..HEAD, which holds f83dbd0 and the other
+  # sigil-less squash commits the retired v1-acceptance window used to accept,
+  # so glyph refuses it at 3 — the wedge escape's own shape, which the action
+  # ships as a placeholder body that says why and a step that stays green.
+  # The action is reached by a relative `uses:` against a checkout of glyph at
+  # the ref, never a `uses: akira-toriyama/glyph/...@` pin: that would be a pin
+  # site, which `distribution` below counts and the rewriter would move.
+  release-notes:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GLYPH: ${{ github.workspace }}/kit/glyph
+      ASSERT: ${{ github.workspace }}/kit/assert.sh
+      WANT_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      # This repository at the workspace root: the action walks the checkout
+      # it runs in, and a composite step takes no working-directory.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: akira-toriyama/glyph
+          ref: ${{ inputs.glyph-ref }}
+          persist-credentials: false
+          path: .glyph-src
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: e2e-kit
+          path: kit
+
+      - name: Take delivery of the kit
+        run: |
+          set -euo pipefail
+          chmod +x "$GLYPH"
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          assert_eq artifact-identity "$("$GLYPH" --version)" "$WANT_VERSION"
+
+      - name: (a) a range that renders
+        id: renders
+        uses: ./.glyph-src/.github/actions/release-notes
+        with:
+          glyph: ${{ github.workspace }}/kit/glyph
+          tag: v2.0.1
+          output: ${{ runner.temp }}/renders.md
+          token: ${{ github.token }}
+
+      - name: (b) the wedge escape's own range
+        id: wedge
+        uses: ./.glyph-src/.github/actions/release-notes
+        with:
+          glyph: ${{ github.workspace }}/kit/glyph
+          tag: v2.0.0
+          output: ${{ runner.temp }}/wedge.md
+          token: ${{ github.token }}
+
+      - name: Read both answers back
+        env:
+          RENDERS_STATUS: ${{ steps.renders.outputs.status }}
+          RENDERS_FILE: ${{ steps.renders.outputs.file }}
+          WEDGE_STATUS: ${{ steps.wedge.outputs.status }}
+          WEDGE_FILE: ${{ steps.wedge.outputs.file }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          . "$ASSERT"
+          assert_eq renders-status "$RENDERS_STATUS" 0
+          assert_eq renders-file "$RENDERS_FILE" "$RUNNER_TEMP/renders.md"
+          assert_matches renders-body "$RENDERS_FILE" '^## '
+          assert_eq wedge-status "$WEDGE_STATUS" 3
+          assert_eq wedge-file "$WEDGE_FILE" "$RUNNER_TEMP/wedge.md"
+          assert_line wedge-body "$WEDGE_FILE" "No release notes for v2.0.0: the walk below it reaches a commit glyph refuses, and this tag was cut where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge. The release job's log carries glyph's error, which names the commit and that point."
+
   distribution:
     runs-on: ubuntu-latest
     timeout-minutes: 5
