@@ -19,6 +19,6 @@ concurrency:
 
 jobs:
   bite:
-    uses: akira-toriyama/.github/.github/workflows/go-bite.yml@v2
+    uses: akira-toriyama/.github/.github/workflows/go-bite.yml@chore/self-repository-uses
     with:
       go-version-file: go.mod
