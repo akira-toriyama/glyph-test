@@ -1654,7 +1654,7 @@ jobs:
 
       - name: (a) a range that renders
         id: renders
-        uses: ./.glyph-src/.github/actions/release-notes
+        uses: ./.glyph-src/.github/actions/release-notes # zizmor: ignore[self-repository]
         with:
           glyph: ${{ github.workspace }}/kit/glyph
           tag: v2.0.1
@@ -1663,7 +1663,7 @@ jobs:
 
       - name: (b) the wedge escape's own range
         id: wedge
-        uses: ./.glyph-src/.github/actions/release-notes
+        uses: ./.glyph-src/.github/actions/release-notes # zizmor: ignore[self-repository]
         with:
           glyph: ${{ github.workspace }}/kit/glyph
           tag: v2.0.0
