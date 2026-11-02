@@ -35,3 +35,5 @@ One PR per season. The sigil is what moves the version — `^` a minor, `~` a
 patch, `=` nothing — whatever gemoji it follows: the gemoji is for the reader
 and decides nothing. A docs commit like the one that wrote this line carries
 `=`.
+
+<!-- probe (t-e7tb): first fleet zizmor run through @v2 at 1.31.1; close without merging -->
