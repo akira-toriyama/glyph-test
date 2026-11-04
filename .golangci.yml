@@ -1,0 +1,7 @@
+# Live ammunition for the hub's go-ci.yml lint-floor check (t-3tpg): a config that
+# keeps the floor intact, so the check must pass. The green half of the stage-2
+# firing — never merged.
+version: "2"
+linters:
+  enable:
+    - errcheck

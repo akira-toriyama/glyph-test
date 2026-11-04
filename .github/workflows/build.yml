@@ -22,3 +22,10 @@ jobs:
     uses: akira-toriyama/.github/.github/workflows/go-bite.yml@v2
     with:
       go-version-file: go.mod
+
+  # Stage-2 firing of the go-ci lint-floor check (t-3tpg): pinned to the hub
+  # commit under test, not @v2. This job leaves with the pull request.
+  ci:
+    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@e512431a58ddedb4066967f15ca23d22cbb06f72
+    with:
+      runners: '["ubuntu-latest"]'
