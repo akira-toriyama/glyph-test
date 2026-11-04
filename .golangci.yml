@@ -1,0 +1,9 @@
+# Live ammunition for the hub's go-ci.yml lint-floor check (t-3tpg): this config
+# drops a floor linter, and the branch's build.yml pins go-ci.yml at the commit
+# under test. The red half of the stage-2 firing — never merged.
+version: "2"
+linters:
+  enable:
+    - errcheck
+  disable:
+    - misspell
