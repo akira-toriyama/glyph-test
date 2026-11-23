@@ -18,7 +18,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # PROBE (hub t-b3jw), never merged: the same diff judged by the gate with the
+  # matcher removal, and by the hub main it branched from.
   bite:
-    uses: akira-toriyama/.github/.github/workflows/go-bite.yml@v2
+    uses: akira-toriyama/.github/.github/workflows/go-bite.yml@ec8b0119436ec7522aa4b02924e39421150a0252
     with:
       go-version-file: go.mod
+  bite-control:
+    uses: akira-toriyama/.github/.github/workflows/go-bite.yml@4b0313494789d72f0aa08af404b81c45d4b8e703
+    with:
+      go-version-file: go.mod
+  # The command on a job where no `go` matcher was ever registered.
+  no-matcher:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::remove-matcher owner=go::"

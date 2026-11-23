@@ -35,3 +35,8 @@ func Farewell(name string) string {
 func Whisper(name string) string {
 	return strings.ToLower(Greet(name))
 }
+
+// Echo greets twice. It is the shipping change this probe makes.
+func Echo(name string) string {
+	return Greet(name) + " " + Greet(name)
+}

@@ -46,3 +46,9 @@ func TestWhisper(t *testing.T) {
 		t.Fatalf("Whisper(Ada) = %q, want %q", got, "hi ada")
 	}
 }
+
+func TestEcho(t *testing.T) {
+	if got := Echo("ada"); got != "hi ada hi ada" {
+		t.Fatalf("Echo(\"ada\") = %q, want %q", got, "hi ada hi ada")
+	}
+}
