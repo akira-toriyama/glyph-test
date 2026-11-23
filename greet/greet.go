@@ -41,10 +41,9 @@ func Whisper(name string) string {
 }
 
 // ExitStderr returns what a failed command wrote to stderr, or "" when err is not
-// an exit error. PROBE: written with errors.As on purpose.
+// an exit error. PROBE: the errors.AsType form.
 func ExitStderr(err error) string {
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		return string(exit.Stderr)
 	}
 	return ""
