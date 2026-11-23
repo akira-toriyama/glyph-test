@@ -22,3 +22,14 @@ jobs:
     uses: akira-toriyama/.github/.github/workflows/go-bite.yml@v2
     with:
       go-version-file: go.mod
+
+  # PROBE (hub t-ay8e), never merged: go-ci at the hub branch whose default
+  # golangci-lint is v2.14.0, and at the hub main it branched from (v2.12.2).
+  ci:
+    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@371c6651e66a85f138fbcda4af4b7d6406054548
+    with:
+      runners: '["ubuntu-latest"]'
+  ci-control:
+    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@4b0313494789d72f0aa08af404b81c45d4b8e703
+    with:
+      runners: '["ubuntu-latest"]'

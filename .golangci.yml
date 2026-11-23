@@ -1,0 +1,6 @@
+# PROBE (hub t-ay8e), never merged: modernize is the linter whose rule set differs
+# between golangci-lint v2.12.2 and v2.14.0.
+version: "2"
+linters:
+  enable:
+    - modernize

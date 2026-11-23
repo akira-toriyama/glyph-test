@@ -6,7 +6,11 @@
 // here.
 package greet
 
-import "strings"
+import (
+	"errors"
+	"os/exec"
+	"strings"
+)
 
 // Greet addresses someone by name, ignoring whatever whitespace the caller
 // happened to pass.
@@ -34,4 +38,14 @@ func Farewell(name string) string {
 // release-worthy change to classify.
 func Whisper(name string) string {
 	return strings.ToLower(Greet(name))
+}
+
+// ExitStderr returns what a failed command wrote to stderr, or "" when err is not
+// an exit error. PROBE: written with errors.As on purpose.
+func ExitStderr(err error) string {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return string(exit.Stderr)
+	}
+	return ""
 }
